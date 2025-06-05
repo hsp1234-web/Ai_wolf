@@ -1,0 +1,10 @@
+[theme]
+primaryColor="#1A73E8"  # Gemini 主藍色
+backgroundColor="#1E1E2E" # 深炭灰藍背景 (示例，可調整)
+secondaryBackgroundColor="#2D2D44" # 稍淺的背景，用於卡片或容器 (示例)
+textColor="#FFFFFF" # 主要文字顏色 - 白色
+font="sans serif" # 使用無襯線字體
+
+# 以下為可選，但有助於初步調整
+# headingColor = "#AECBFA" # 輔助淡紫色用於標題
+# linkColor = "#4FABFF" # 連結顏色
