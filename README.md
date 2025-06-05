@@ -25,6 +25,7 @@
 4.  從 GitHub (`https://github.com/hsp1234-web/Ai_wolf.git`) 克隆最新的專案程式碼到 `My Drive/wolfAI/`，如果已存在則嘗試更新。
 
 ```python
+#@title 1. 環境設置與 Ai_wolf 專案部署 (請點此展開程式碼)
 # === Colab 環境設置與 Ai_wolf 專案部署 ===
 # Cell 1: 請執行此儲存格以完成所有初始設定。
 import os
@@ -105,73 +106,69 @@ else:
 在 Cell 1 成功執行完畢後，複製以下指令到 Colab Notebook 的第二個程式碼儲存格中，然後執行它。
 
 ```python
+#@title 2. 啟動 Streamlit 應用程式 (背景執行)
 # === Ai_wolf 專案啟動 ===
 # Cell 2: 在 Cell 1 成功執行後，執行此儲存格來啟動 Streamlit 應用程式。
+#         此儲存格會嘗試在背景啟動 Streamlit。
 
-print("🚀 正在啟動 Streamlit 應用程式...")
-print("⏳ 請稍候，Streamlit 正在準備啟動 (這可能需要一點時間)...")
-print("指令執行後，下方的日誌會顯示 Streamlit 的啟動狀態。")
-print("接著，我們會嘗試自動獲取一個可供您訪問的 Colab 代理網址。")
+print("🚀 正在嘗試於背景啟動 Streamlit 應用程式...")
+print("⏳ 請稍候幾秒鐘，讓應用程式有時間開始運行。")
+print("此儲存格執行後，請繼續執行【下一個儲存格 (Cell 3)】來獲取並顯示應用程式的訪問連結。")
 print("\n" + "="*70)
-
-# 啟動 Streamlit 應用程式在背景
-# 注意：由於 !streamlit run 會持續輸出日誌並佔用儲存格，
-# 我們無法直接在其後運行Python來捕獲其特定輸出或精確知道它何時就緒。
-# Colab 的行為是，如果一個端口被監聽，它通常會嘗試提供一個代理。
-# 下面的代碼是在 Streamlit 命令發出後，給予一定時間，然後嘗試查詢這個代理。
+print("正在執行 Streamlit 命令...")
 
 !streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501 &
 
-# 為了讓後續的 Python 代碼（獲取代理URL）能執行，我們將 Streamlit 在後台運行。
-# 但是，直接在 Colab Notebook 中這樣做，日誌可能不會即時完整顯示在 !streamlit run 命令下方。
-# 一個更穩健的做法可能需要將 Streamlit 的啟動和 URL 的獲取放在不同的儲存格，
-# 或者使用更複雜的背景進程管理。
-
-# 折衷方案：先讓 Streamlit 跑起來，然後用戶手動執行一個小腳本獲取URL，
-# 或者我們在這裡等待後嘗試獲取。
-# 為了在此儲存格內提供「一站式」體驗，我們嘗試等待後獲取。
-
 print("\n" + "="*70)
-print("Streamlit 應用程式已在背景嘗試啟動。")
-print("現在嘗試自動獲取並顯示 Colab 代理訪問網址...")
-print("如果 Streamlit 成功在 8501 端口上運行，下方應會出現一個可點擊的連結。")
+print("Streamlit 應用程式已在背景送出啟動指令。")
+print("請執行【下一個儲存格 (Cell 3)】以獲取可訪問的連結。")
+print("如果 Cell 3 長時間無法獲取連結，您可以回到此儲存格的輸出日誌，查看是否有 'External URL' 可供手動複製。")
+```
+**執行說明：**
+*   執行後，Colab 會提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
 
-import time
+### Cell 3: 獲取並顯示應用程式訪問連結
+
+在 Cell 2 執行完畢並提示 Streamlit 已在背景啟動後，執行此儲存格以獲取可公開訪問的應用程式連結。
+
+```python
+#@title 3. 🔗 獲取並顯示應用程式訪問連結 (請點此展開程式碼)
+# === Ai_wolf 專案連結獲取 ===
+# Cell 3: 在 Cell 2 啟動 Streamlit 後，執行此儲存格來獲取並顯示訪問連結。
+
 from IPython.display import display, HTML
 from google.colab.output import eval_js
+import time
 
-# 給 Streamlit 和 Colab 代理一點時間準備
-# 這個時間可能需要根據實際情況調整
-WAIT_SECONDS = 15
-print(f"⏳ 請等待約 {WAIT_SECONDS} 秒，我們正在生成訪問連結...")
-time.sleep(WAIT_SECONDS)
+print("⏳ 正在嘗試獲取 Colab 代理網址...")
+print("   這可能需要幾秒鐘，請稍候。")
+
+# 給予 Colab 一點時間來註冊端口並準備好代理
+# 如果 Streamlit 應用程式較大或啟動較慢，可能需要增加此延遲
+time.sleep(8) # 等待 8 秒
 
 try:
-    # 嘗試獲取 8501 端口的 Colab 代理 URL
     proxy_url = eval_js(f'google.colab.kernel.proxyPort(8501)')
 
     if proxy_url:
         display(HTML(f"<hr><p style='font-size:1.3em; font-weight:bold; margin:20px 0; text-align:center; color:green;'>🎉 太棒了！您的應用程式應該可以透過下面的連結訪問：</p>" \
-                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>點此開啟應用程式</a></p>" \
+                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>點此開啟 Ai_wolf 應用程式</a></p>" \
                      f"<p style='font-size:0.9em; color:gray; text-align:center; margin-top:10px;'>連結地址: {proxy_url}</p>" \
-                     "<p style='font-size:0.9em; color:gray; text-align:center;'>如果點擊無效，請檢查 Streamlit 是否仍在 Colab 背景中正常運行（可能需要查看上方 `streamlit run` 命令的日誌），或嘗試重新執行此儲存格。有時可能需要更長的等待時間。</p><hr>"))
+                     "<p style='font-size:0.9em; color:gray; text-align:center;'>如果點擊後應用程式未載入，請確保 Cell 2 中的 Streamlit 仍在運行，並考慮重新執行此 Cell 3 (有時多試一次或稍等片刻會有用)。</p><hr>"))
     else:
         display(HTML("<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ 未能自動獲取到 Colab 代理網址。</p>" \
-                     "<p style='color:orange; text-align:center;'>這可能是因為 Streamlit 未能成功啟動，或者 Colab 未能及時分配代理端口。</p>" \
-                     "<p style='color:orange; text-align:center;'>請檢查上方 `streamlit run` 命令的輸出日誌。如果看到 'External URL'，您可以嘗試手動複製該網址到瀏覽器中訪問。</p>" \
-                     "<p style='color:orange; text-align:center;'>如果問題持續，嘗試增加上面程式碼中的 `WAIT_SECONDS` 值（例如改為 30）再試一次。</p><hr>"))
+                     "<p style='color:orange; text-align:center;'>請返回 Cell 2 的輸出日誌，查看 Streamlit 是否已成功啟動並顯示了一個 'External URL'。</p>" \
+                     "<p style='color:orange; text-align:center;'>如果看到 'External URL'，您可以嘗試手動複製該網址到瀏覽器中訪問。</p>" \
+                     "<p style='color:orange; text-align:center;'>如果 Cell 2 沒有成功啟動 Streamlit，請檢查其日誌中的錯誤訊息。</p><hr>"))
 except Exception as e:
     display(HTML(f"<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ 嘗試獲取代理網址時發生錯誤:</p><p style='color:red; text-align:center;'>{str(e)}</p>" \
-                 "<p style='color:orange; text-align:center;'>請檢查上方 `streamlit run` 命令的輸出日誌，並嘗試手動複製 'External URL' 到瀏覽器中訪問。</p><hr>"))
+                 "<p style='color:orange; text-align:center;'>請返回 Cell 2 的輸出日誌，查看 Streamlit 是否已成功啟動並顯示了一個 'External URL'，然後嘗試手動複製該網址到瀏覽器中訪問。</p><hr>"))
 
 print("\n" + "="*70)
-print("自動獲取連結的嘗試已完成。")
-print(" - 如果上方出現了綠色的「點此開啟應用程式」按鈕，請優先使用它。")
-print(" - 如果自動獲取失敗，請回看 `!streamlit run` 命令的日誌輸出，尋找 'External URL' 並手動複製訪問。")
-print(" - 確保此 Colab Notebook 保持運行狀態以使應用程式可訪問。")
+print("連結獲取嘗試完成。")
+print(" - 如果上方出現了綠色的「點此開啟 Ai_wolf 應用程式」按鈕，請使用該連結。")
+print(" - 如果未能獲取連結，請依照上方的提示操作。")
 ```
-**執行說明：**
-*   執行後，Colab 會提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
 
 ### 應用程式操作指南
 
@@ -232,6 +229,7 @@ This cell will:
 4.  Clone/update the project code from GitHub (`https://github.com/hsp1234-web/Ai_wolf.git`) into `My Drive/wolfAI/`.
 
 ```python
+#@title 1. Environment Setup & Ai_wolf Project Deployment (Click to expand code)
 # === Colab Environment Setup & Ai_wolf Project Deployment ===
 # Cell 1: Please run this cell to complete all initial setup.
 import os
@@ -310,68 +308,69 @@ else:
 After Cell 1 executes successfully, copy the following into the second Colab cell and run it.
 
 ```python
+#@title 2. Launch Streamlit Application (Background Process)
 # === Ai_wolf Project Launch ===
 # Cell 2: After Cell 1 has run successfully, execute this cell to launch the Streamlit application.
+#         This cell will attempt to launch Streamlit in the background.
 
-print("🚀 Launching Streamlit application...")
-print("⏳ Please wait, Streamlit is preparing to launch (this might take a moment)...")
-print("After the command executes, the logs below will show Streamlit's startup status.")
-print("Next, we will attempt to automatically fetch an accessible Colab proxy URL for you.")
+print("🚀 Attempting to launch Streamlit application in the background...")
+print("⏳ Please wait a few seconds for the application to start running.")
+print("After this cell executes, please proceed to run 【the next cell (Cell 3)】 to get and display the application access link.")
 print("\n" + "="*70)
-
-# Launch Streamlit application in the background
-# Note: Since !streamlit run continuously outputs logs and occupies the cell,
-# we cannot directly run Python after it to capture its specific output or know exactly when it's ready.
-# Colab's behavior is that if a port is listened on, it usually tries to provide a proxy.
-# The code below gives some time after the Streamlit command is issued, then tries to query this proxy.
+print("Executing Streamlit command...")
 
 !streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501 &
 
-# To allow subsequent Python code (for fetching the proxy URL) to run,
-# we run Streamlit in the background using '&'.
-# However, doing this directly in a Colab Notebook might mean logs don't always appear neatly under the command.
-
 print("\n" + "="*70)
-print("Streamlit application has been launched in the background.")
-print("Now attempting to automatically fetch and display the Colab proxy access URL...")
-print("If Streamlit has successfully started on port 8501, a clickable link should appear below.")
+print("The command to launch Streamlit in the background has been sent.")
+print("Please execute 【the next cell (Cell 3)】 to obtain the accessible link.")
+print("If Cell 3 is unable to fetch the link after a while, you can check the output log of this cell for an 'External URL' to copy manually.")
+```
+**Execution Notes:**
+*   Click the `https://*.googleusercontent.com/proxy/8501/` URL from Colab output.
 
-import time
+### Cell 3: Get and Display Application Access Link
+
+After Cell 2 has finished executing and indicated that Streamlit has been launched in the background, run this cell to obtain a publicly accessible link to the application.
+
+```python
+#@title 3. 🔗 Get and Display Application Access Link (Click to expand code)
+# === Ai_wolf Project Link Retrieval ===
+# Cell 3: After Streamlit is launched by Cell 2, execute this cell to get and display the access link.
+
 from IPython.display import display, HTML
 from google.colab.output import eval_js
+import time
 
-# Allow some time for Streamlit and Colab proxy to initialize
-# This duration might need adjustment based on actual performance
-WAIT_SECONDS = 15
-print(f"⏳ Please wait about {WAIT_SECONDS} seconds while we generate the access link...")
-time.sleep(WAIT_SECONDS)
+print("⏳ Attempting to fetch the Colab proxy URL...")
+print("   This might take a few seconds, please wait.")
+
+# Allow Colab some time to register the port and prepare the proxy
+# If your Streamlit application is large or starts slowly, you might need to increase this delay
+time.sleep(8) # Wait for 8 seconds
 
 try:
-    # Attempt to get the Colab proxy URL for port 8501
     proxy_url = eval_js(f'google.colab.kernel.proxyPort(8501)')
 
     if proxy_url:
         display(HTML(f"<hr><p style='font-size:1.3em; font-weight:bold; margin:20px 0; text-align:center; color:green;'>🎉 Great! Your application should be accessible via the link below:</p>" \
-                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>Click here to open the Application</a></p>" \
+                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>Click here to open Ai_wolf Application</a></p>" \
                      f"<p style='font-size:0.9em; color:gray; text-align:center; margin-top:10px;'>Link address: {proxy_url}</p>" \
-                     "<p style='font-size:0.9em; color:gray; text-align:center;'>If clicking doesn't work, please check if Streamlit is still running correctly in the Colab background (you might need to check the logs from the `streamlit run` command above), or try re-running this cell. Sometimes, a longer wait time might be needed.</p><hr>"))
+                     "<p style='font-size:0.9em; color:gray; text-align:center;'>If the application doesn't load after clicking, please ensure Streamlit from Cell 2 is still running and consider re-running this Cell 3 (sometimes another try or a short wait helps).</p><hr>"))
     else:
         display(HTML("<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ Failed to automatically fetch the Colab proxy URL.</p>" \
-                     "<p style='color:orange; text-align:center;'>This might be because Streamlit failed to start, or Colab couldn't assign a proxy port in time.</p>" \
-                     "<p style='color:orange; text-align:center;'>Please check the output log from the `streamlit run` command above. If you see an 'External URL', you can try manually copying that URL into your browser.</p>" \
-                     "<p style='color:orange; text-align:center;'>If the issue persists, try increasing the `WAIT_SECONDS` value in the code above (e.g., to 30) and try again.</p><hr>"))
+                     "<p style='color:orange; text-align:center;'>Please go back to the output log of Cell 2 to see if Streamlit started successfully and displayed an 'External URL'.</p>" \
+                     "<p style='color:orange; text-align:center;'>If you see an 'External URL', you can try manually copying that URL into your browser.</p>" \
+                     "<p style='color:orange; text-align:center;'>If Cell 2 did not launch Streamlit successfully, check its log for error messages.</p><hr>"))
 except Exception as e:
     display(HTML(f"<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ An error occurred while trying to fetch the proxy URL:</p><p style='color:red; text-align:center;'>{str(e)}</p>" \
-                 "<p style='color:orange; text-align:center;'>Please check the output log from the `streamlit run` command above and try manually copying the 'External URL' into your browser.</p><hr>"))
+                 "<p style='color:orange; text-align:center;'>Please go back to the output log of Cell 2, see if Streamlit started successfully and displayed an 'External URL', then try manually copying that URL into your browser.</p><hr>"))
 
 print("\n" + "="*70)
-print("Attempt to automatically fetch the link is complete.")
-print(" - If you see a green 'Click here to open the Application' button above, please use that first.")
-print(" - If automatic fetching failed, please refer back to the log output from the `!streamlit run` command for the 'External URL' and try accessing it manually.")
-print(" - Ensure this Colab Notebook remains running for the application to be accessible.")
+print("Link retrieval attempt finished.")
+print(" - If a green 'Click here to open Ai_wolf Application' button appeared above, please use that link.")
+print(" - If link retrieval failed, please follow the instructions in the message above.")
 ```
-**Execution Notes:**
-*   Click the `https://*.googleusercontent.com/proxy/8501/` URL from Colab output.
 
 ### Application Usage Guide
 
