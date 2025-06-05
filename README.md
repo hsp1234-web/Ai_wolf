@@ -109,9 +109,29 @@ else:
 # Cell 2: 在 Cell 1 成功執行後，執行此儲存格來啟動 Streamlit 應用程式。
 
 print("🚀 正在啟動 Streamlit 應用程式...")
-print("請點擊 Colab 輸出中出現的 `https://*.googleusercontent.com/proxy/8501/` 網址來訪問應用。")
+print("⏳ 請稍候，Streamlit 正在準備啟動...")
+print("\n" + "="*60)
+print("✨ 您的人機協同分析平台即將就緒！ ✨")
+print("="*60 + "\n")
+print("當看到下方出現類似 'You can now view your Streamlit app in your browser.' 的訊息後，")
+print("請特別注意 Colab 的輸出日誌，找到並點擊那個格式如下的【代理網址】：")
+print("\n👉 [重要] 代理網址 (Proxy URL): https://[一長串隨機字符].googleusercontent.com/proxy/8501/ 👈")
+print("\n此網址是 Colab 提供的，用於從外部瀏覽器安全訪問應用程式。")
+print("---")
+print("⚠️ 注意：")
+print("1. Colab 可能會同時顯示其他網址，例如 'Local URL' (http://localhost:8501) 或 'Network URL' (類似 http://172.x.x.x:8501)。")
+print("   這些網址主要用於 Colab 內部或特定網路環境，通常【無法】直接從您的本機瀏覽器訪問。")
+print("2. External URL (類似 http://34.x.x.x:8501) 是 Colab 分配的臨時公網 IP，有時可能因網路限制而不穩定或無法訪問。")
+print("   因此，強烈建議您優先使用上面提到的 `googleusercontent.com/proxy/` 代理網址。")
+print("3. 如果點擊代理網址後長時間無法開啟，請嘗試重新執行此儲存格，或檢查 Colab 的運行狀態。")
+print("\n" + "="*60)
+print("正在執行 Streamlit 命令...")
+
 !streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501
 
+print("\n" + "="*60)
+print("Streamlit 應用程式已嘗試啟動。請檢查上面的日誌輸出以獲取訪問網址。")
+print("如果應用程式成功啟動，您應該能看到 'You can now view your Streamlit app in your browser.' 以及相關網址。")
 ```
 **執行說明：**
 *   執行後，Colab 會提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
@@ -257,9 +277,29 @@ After Cell 1 executes successfully, copy the following into the second Colab cel
 # Cell 2: After Cell 1 has run successfully, execute this cell to launch the Streamlit application.
 
 print("🚀 Launching Streamlit application...")
-print("Please click the `https://*.googleusercontent.com/proxy/8501/` URL that appears in the Colab output to access the application.")
+print("⏳ Please wait, Streamlit is preparing to launch...")
+print("\n" + "="*60)
+print("✨ Your Human-Computer Collaborative Analysis Platform is almost ready! ✨")
+print("="*60 + "\n")
+print("After you see messages like 'You can now view your Streamlit app in your browser.' below,")
+print("please pay close attention to Colab's output log, find and click the URL formatted as follows (the【Proxy URL】):")
+print("\n👉 [IMPORTANT] Proxy URL: https://[a_long_random_string].googleusercontent.com/proxy/8501/ 👈")
+print("\nThis URL is provided by Colab for securely accessing the application from an external browser.")
+print("---")
+print("⚠️ Important Notes:")
+print("1. Colab might also display other URLs, such as 'Local URL' (http://localhost:8501) or 'Network URL' (e.g., http://172.x.x.x:8501).")
+print("   These URLs are primarily for internal use within Colab or specific network environments and are usually【NOT】directly accessible from your local browser.")
+print("2. The 'External URL' (e.g., http://34.x.x.x:8501) is a temporary public IP assigned by Colab. It might be unstable or inaccessible due to network restrictions.")
+print("   Therefore, it is strongly recommended to use the `googleusercontent.com/proxy/` Proxy URL mentioned above.")
+print("3. If you have trouble opening the application after clicking the proxy URL, try re-running this cell or check Colab's runtime status.")
+print("\n" + "="*60)
+print("Executing Streamlit command...")
+
 !streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501
 
+print("\n" + "="*60)
+print("Streamlit application has attempted to launch. Please check the log output above for the access URL.")
+print("If the application started successfully, you should see 'You can now view your Streamlit app in your browser.' and the relevant URLs.")
 ```
 **Execution Notes:**
 *   Click the `https://*.googleusercontent.com/proxy/8501/` URL from Colab output.
