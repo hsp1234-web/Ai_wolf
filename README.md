@@ -106,69 +106,127 @@ else:
 在 Cell 1 成功執行完畢後，複製以下指令到 Colab Notebook 的第二個程式碼儲存格中，然後執行它。
 
 ```python
-#@title 2. 啟動 Streamlit 應用程式 (背景執行)
-# === Ai_wolf 專案啟動 ===
-# Cell 2: 在 Cell 1 成功執行後，執行此儲存格來啟動 Streamlit 應用程式。
-#         此儲存格會嘗試在背景啟動 Streamlit。
+#@title 2. 🚀 啟動 Ai_wolf 應用並獲取訪問連結 (點此執行)
+# === Ai_wolf 專案啟動與連結獲取 ===
+# Cell 2: 執行此儲存格來啟動 Streamlit 應用程式，並自動獲取訪問連結。
 
-print("🚀 正在嘗試於背景啟動 Streamlit 應用程式...")
-print("⏳ 請稍候幾秒鐘，讓應用程式有時間開始運行。")
-print("此儲存格執行後，請繼續執行【下一個儲存格 (Cell 3)】來獲取並顯示應用程式的訪問連結。")
-print("\n" + "="*70)
-print("正在執行 Streamlit 命令...")
+import subprocess
+import time
+import os
+from IPython.display import display, HTML, clear_output
+from google.colab.output import eval_js
 
-!streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501 &
+# --- 配置參數 ---
+STREAMLIT_APP_PATH = "/content/drive/MyDrive/wolfAI/app.py"
+PORT = 8501
+WAIT_SECONDS_FOR_SERVER = 15 # 等待伺服器啟動的時間
+MAX_RETRIES_FOR_URL = 3 # 嘗試獲取 URL 的最大次數
+RETRY_DELAY_SECONDS = 5 # 每次重試之間的延遲
 
-print("\n" + "="*70)
-print("Streamlit 應用程式已在背景送出啟動指令。")
-print("請執行【下一個儲存格 (Cell 3)】以獲取可訪問的連結。")
-print("如果 Cell 3 長時間無法獲取連結，您可以回到此儲存格的輸出日誌，查看是否有 'External URL' 可供手動複製。")
+# --- 清理先前輸出 (如果需要) ---
+# clear_output(wait=True) # 如果希望每次執行都清空之前此儲存格的輸出，取消此行註解
+
+print("🚀 正在準備啟動 Streamlit 應用程式...")
+print(f"   應用程式路徑: {STREAMLIT_APP_PATH}")
+print(f"   預計監聽端口: {PORT}")
+print("-" * 70)
+
+# --- 檢查 app.py 是否存在 ---
+if not os.path.exists(STREAMLIT_APP_PATH):
+    display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 錯誤：找不到 Streamlit 應用程式檔案！</p>" \
+                 f"<p style='color:red;'>   請確認路徑 <code style='color:red; background-color:#f0f0f0; padding:2px 4px; border-radius:3px;'>{STREAMLIT_APP_PATH}</code> 是否正確，</p>" \
+                 f"<p style='color:red;'>   並且您已成功執行 Cell 1 中的所有步驟。</p>"))
+    # 使用 raise SystemExit() 會終止儲存格執行但不會顯示 traceback
+    # 如果需要顯示 traceback，可以直接 raise Exception()
+    raise SystemExit("應用程式檔案 app.py 未找到，終止執行。")
+
+# --- 啟動 Streamlit 伺服器 ---
+streamlit_process = None
+try:
+    print(f"⏳ 正在嘗試於背景啟動 Streamlit (約需 {WAIT_SECONDS_FOR_SERVER} 秒)...")
+    # 將 Streamlit 的 stdout 和 stderr 重定向，以避免其日誌充滿 Colab 輸出
+    # 如果需要調試 Streamlit 自身的啟動問題，可以移除 stdout 和 stderr 的重定向，或將其導向檔案
+    cmd = ["streamlit", "run", STREAMLIT_APP_PATH, "--server.port", str(PORT), "--server.headless", "true", "--browser.gatherUsageStats", "false"]
+
+    # 注意：在 Colab 中，subprocess 的行為有時與本機不同，特別是對於長時間運行的伺服器。
+    # DEVNULL 可能會導致某些情況下 server 過早退出，如果遇到問題，可以嘗試重定向到檔案或移除重定向進行調試。
+    streamlit_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    print(f"   Streamlit 啟動指令已送出 (PID: {streamlit_process.pid if streamlit_process else '未知'})。")
+    print(f"   給予伺服器 {WAIT_SECONDS_FOR_SERVER} 秒進行初始化...")
+    time.sleep(WAIT_SECONDS_FOR_SERVER)
+
+    # 檢查 Streamlit 是否仍在運行
+    if streamlit_process.poll() is not None:
+        # 如果 poll() 返回非 None，表示進程已結束
+        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ Streamlit 似乎未能成功啟動或已意外終止。</p>" \
+                     f"<p style='color:orange;'>   請嘗試重新執行 Cell 1 確認環境，然後再次執行此 Cell 2。</p>" \
+                     f"<p style='color:orange;'>   如果問題持續，您可能需要檢查 `app.py` 是否有錯誤，或者嘗試移除上面 Popen 中的 `stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL` 來查看詳細日誌。</p>"))
+        raise SystemExit("Streamlit 進程未能持續運行。")
+
+    print("✅ Streamlit 應已在背景運行。")
+    print("-" * 70)
+
+except Exception as e:
+    display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 啟動 Streamlit 時發生預期之外的錯誤:</p>" \
+                 f"<p style='color:red; font-family:monospace; white-space:pre-wrap;'>{str(e)}</p>" \
+                 f"<p style='color:orange;'>   請檢查錯誤訊息，確認 Streamlit 是否已正確安裝，以及相關路徑是否無誤。</p>"))
+    if streamlit_process and streamlit_process.poll() is None:
+        streamlit_process.terminate() # 嘗試終止進程
+    raise SystemExit(f"啟動 Streamlit 失敗: {str(e)}")
+
+# --- 嘗試獲取 Colab 代理 URL ---
+print("🔗 現在嘗試獲取 Colab 代理訪問網址...")
+proxy_url = None
+for attempt in range(MAX_RETRIES_FOR_URL):
+    print(f"   嘗試第 {attempt + 1}/{MAX_RETRIES_FOR_URL} 次...")
+    try:
+        proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
+        if proxy_url:
+            print(f"   🎉 成功獲取到代理 URL！")
+            break # 成功獲取到 URL，跳出循環
+    except Exception as e_evaljs:
+        print(f"      獲取 URL 第 {attempt + 1} 次失敗: {str(e_evaljs)[:100]}...") # 只顯示部分錯誤訊息避免過長
+
+    if attempt < MAX_RETRIES_FOR_URL - 1: # 如果不是最後一次嘗試，則等待
+        print(f"      等待 {RETRY_DELAY_SECONDS} 秒後重試...")
+        time.sleep(RETRY_DELAY_SECONDS)
+print("-" * 70)
+
+# --- 顯示結果 ---
+if proxy_url:
+    # 清理之前的 print 輸出，只顯示最終的按鈕和重要訊息
+    clear_output(wait=True)
+    display(HTML(f"<div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #f0fff0;'>" \
+                 f"<h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 應用程式已準備就緒！</h2>" \
+                 f"<p style='font-size:1.1em;'>您的 Ai_wolf 分析平台應該可以透過下面的連結訪問：</p>" \
+                 f"<p style='margin: 25px 0;'><a href='{proxy_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px; font-size:1.2em; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);'>🚀 點此開啟 Ai_wolf 應用程式</a></p>" \
+                 f"<p style='font-size:0.9em; color:gray;'>連結地址: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>" \
+                 f"<p style='font-size:0.9em; color:gray; margin-top:15px;'>如果點擊後應用程式未載入，請確保此 Colab Notebook 仍在運行，並可嘗試刷新頁面或重新執行此儲存格。</p>" \
+                 f"</div>"))
+else:
+    # 清理之前的 print 輸出
+    clear_output(wait=True)
+    display(HTML(f"<div style='border: 2px solid #F44336; padding: 20px; border-radius: 10px; text-align: center; background-color: #fff0f0;'>" \
+                 f"<h2 style='color: #C62828; margin-bottom:15px;'>❌ 未能自動獲取到 Colab 代理網址</h2>" \
+                 f"<p style='font-size:1.1em; color:#D32F2F;'>我們未能為您的應用程式自動生成一個可點擊的 Colab 代理連結。</p>" \
+                 f"<p style='color:orange; margin-top:15px;'>**可能的原因與建議：**</p>" \
+                 f"<ul style='text-align:left; display:inline-block; margin-top:10px;'>" \
+                 f"<li>Streamlit 應用程式可能未能成功在背景啟動。</li>" \
+                 f"<li>Colab 的代理服務可能暫時無法使用或響應較慢。</li>" \
+                 f"<li>您可以嘗試**重新執行一次此儲存格**。</li>" \
+                 f"<li>如果問題持續，請**檢查此儲存格執行時是否有任何錯誤日誌輸出**（在 `clear_output` 清理前）。Streamlit 本身可能會打印一個 'External URL'，您可以嘗試手動複製該 URL 到瀏覽器中訪問。</li>" \
+                 f"</ul>" \
+                 f"<p style='font-size:0.9em; color:gray; margin-top:20px;'>請注意：應用程式需要在 Colab 中保持運行才能被訪問。</p>" \
+                 f"</div>"))
+
+# 提示：如果 Streamlit 應用程式有自己的退出機制或使用者可以從其UI中停止它，
+# streamlit_process.terminate() 或 .kill() 可能需要在 Notebook 關閉或重新運行此儲存格前被調用，
+# 以避免端口衝突。但對於一個簡單的 README 腳本，我們暫時不處理這種複雜的生命週期管理。
+# 如果需要手動停止，使用者可以中斷 Colab 的執行階段。
 ```
 **執行說明：**
 *   執行後，Colab 會提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
-
-### Cell 3: 獲取並顯示應用程式訪問連結
-
-在 Cell 2 執行完畢並提示 Streamlit 已在背景啟動後，執行此儲存格以獲取可公開訪問的應用程式連結。
-
-```python
-#@title 3. 🔗 獲取並顯示應用程式訪問連結 (請點此展開程式碼)
-# === Ai_wolf 專案連結獲取 ===
-# Cell 3: 在 Cell 2 啟動 Streamlit 後，執行此儲存格來獲取並顯示訪問連結。
-
-from IPython.display import display, HTML
-from google.colab.output import eval_js
-import time
-
-print("⏳ 正在嘗試獲取 Colab 代理網址...")
-print("   這可能需要幾秒鐘，請稍候。")
-
-# 給予 Colab 一點時間來註冊端口並準備好代理
-# 如果 Streamlit 應用程式較大或啟動較慢，可能需要增加此延遲
-time.sleep(8) # 等待 8 秒
-
-try:
-    proxy_url = eval_js(f'google.colab.kernel.proxyPort(8501)')
-
-    if proxy_url:
-        display(HTML(f"<hr><p style='font-size:1.3em; font-weight:bold; margin:20px 0; text-align:center; color:green;'>🎉 太棒了！您的應用程式應該可以透過下面的連結訪問：</p>" \
-                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>點此開啟 Ai_wolf 應用程式</a></p>" \
-                     f"<p style='font-size:0.9em; color:gray; text-align:center; margin-top:10px;'>連結地址: {proxy_url}</p>" \
-                     "<p style='font-size:0.9em; color:gray; text-align:center;'>如果點擊後應用程式未載入，請確保 Cell 2 中的 Streamlit 仍在運行，並考慮重新執行此 Cell 3 (有時多試一次或稍等片刻會有用)。</p><hr>"))
-    else:
-        display(HTML("<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ 未能自動獲取到 Colab 代理網址。</p>" \
-                     "<p style='color:orange; text-align:center;'>請返回 Cell 2 的輸出日誌，查看 Streamlit 是否已成功啟動並顯示了一個 'External URL'。</p>" \
-                     "<p style='color:orange; text-align:center;'>如果看到 'External URL'，您可以嘗試手動複製該網址到瀏覽器中訪問。</p>" \
-                     "<p style='color:orange; text-align:center;'>如果 Cell 2 沒有成功啟動 Streamlit，請檢查其日誌中的錯誤訊息。</p><hr>"))
-except Exception as e:
-    display(HTML(f"<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ 嘗試獲取代理網址時發生錯誤:</p><p style='color:red; text-align:center;'>{str(e)}</p>" \
-                 "<p style='color:orange; text-align:center;'>請返回 Cell 2 的輸出日誌，查看 Streamlit 是否已成功啟動並顯示了一個 'External URL'，然後嘗試手動複製該網址到瀏覽器中訪問。</p><hr>"))
-
-print("\n" + "="*70)
-print("連結獲取嘗試完成。")
-print(" - 如果上方出現了綠色的「點此開啟 Ai_wolf 應用程式」按鈕，請使用該連結。")
-print(" - 如果未能獲取連結，請依照上方的提示操作。")
-```
 
 ### 應用程式操作指南
 
