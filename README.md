@@ -109,39 +109,66 @@ else:
 # Cell 2: 在 Cell 1 成功執行後，執行此儲存格來啟動 Streamlit 應用程式。
 
 print("🚀 正在啟動 Streamlit 應用程式...")
-print("⏳ 請稍候，Streamlit 正在準備啟動...")
+print("⏳ 請稍候，Streamlit 正在準備啟動 (這可能需要一點時間)...")
+print("指令執行後，下方的日誌會顯示 Streamlit 的啟動狀態。")
+print("接著，我們會嘗試自動獲取一個可供您訪問的 Colab 代理網址。")
 print("\n" + "="*70)
-print("✨ 您的人機協同分析平台即將就緒！ ✨")
-print("="*70 + "\n")
-print("Streamlit 應用程式啟動後，Colab 的輸出日誌中會顯示幾種不同的網址。")
-print("請找到並複製【External URL】（外部網址），它看起來像這樣：")
-print("   External URL: http://[一串數字IP地址]:8501")
-print("\n👉 請將上述【External URL】複製到您的瀏覽器地址欄中並嘗試訪問。")
-print("這是從您的本地瀏覽器訪問在 Colab 中運行的 Streamlit 應用的主要方式。")
-print("---")
-print("ℹ️ 關於其他網址：")
-print("1. Local URL (例如 http://localhost:8501)：僅限在 Colab 虛擬機內部訪問。")
-print("2. Network URL (例如 http://172.x.x.x:8501)：通常也僅限 Colab 內部網路環境。")
-print("   您【無法】直接從您的瀏覽器使用這兩種網址。")
-print("---")
-print("⚠️ 注意事項：")
-print("1. 【External URL】的 IP 位址是動態分配的，每次重新啟動 Colab 執行階段或應用程式時都可能會改變。")
-print("2. 如果【External URL】無法訪問，或者您在 Colab 的輸出中看到 'Not exposing service to public IP' 的提示，")
-print("   您可以嘗試以下 Colab 功能來手動獲取一個可訪問的代理網址：")
-print("   在 Colab 輸出日誌中，尋找是否有一個按鈕或連結提示“公開 xxx 端口”或 Colab 自動生成一個 `*.notebook.googleusercontent.com/proxy/...` 格式的網址。")
-print("   如果 Colab 沒有自動提供，您也可以在新的 Colab 程式碼儲存格中嘗試執行以下 Python 指令（執行完 Cell 2 之後）：")
-print("   `from google.colab.output import eval_js`")
-print("   `print(eval_js(f'google.colab.kernel.proxyPort(8501)'))`")
-print("   這會嘗試生成一個 `*.googleusercontent.com/proxy/8501/` 格式的代理網址。")
-print("3. 應用程式需要在 Colab 中保持運行狀態才能持續訪問。")
-print("\n" + "="*70)
-print("正在執行 Streamlit 命令以啟動應用程式...")
 
-!streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501
+# 啟動 Streamlit 應用程式在背景
+# 注意：由於 !streamlit run 會持續輸出日誌並佔用儲存格，
+# 我們無法直接在其後運行Python來捕獲其特定輸出或精確知道它何時就緒。
+# Colab 的行為是，如果一個端口被監聽，它通常會嘗試提供一個代理。
+# 下面的代碼是在 Streamlit 命令發出後，給予一定時間，然後嘗試查詢這個代理。
+
+!streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501 &
+
+# 為了讓後續的 Python 代碼（獲取代理URL）能執行，我們將 Streamlit 在後台運行。
+# 但是，直接在 Colab Notebook 中這樣做，日誌可能不會即時完整顯示在 !streamlit run 命令下方。
+# 一個更穩健的做法可能需要將 Streamlit 的啟動和 URL 的獲取放在不同的儲存格，
+# 或者使用更複雜的背景進程管理。
+
+# 折衷方案：先讓 Streamlit 跑起來，然後用戶手動執行一個小腳本獲取URL，
+# 或者我們在這裡等待後嘗試獲取。
+# 為了在此儲存格內提供「一站式」體驗，我們嘗試等待後獲取。
 
 print("\n" + "="*70)
-print("Streamlit 應用程式已嘗試啟動。請仔細檢查上面的日誌輸出，找到【External URL】並嘗試訪問。")
-print("如果啟動遇到問題，日誌中通常會有錯誤訊息提示。")
+print("Streamlit 應用程式已在背景嘗試啟動。")
+print("現在嘗試自動獲取並顯示 Colab 代理訪問網址...")
+print("如果 Streamlit 成功在 8501 端口上運行，下方應會出現一個可點擊的連結。")
+
+import time
+from IPython.display import display, HTML
+from google.colab.output import eval_js
+
+# 給 Streamlit 和 Colab 代理一點時間準備
+# 這個時間可能需要根據實際情況調整
+WAIT_SECONDS = 15
+print(f"⏳ 請等待約 {WAIT_SECONDS} 秒，我們正在生成訪問連結...")
+time.sleep(WAIT_SECONDS)
+
+try:
+    # 嘗試獲取 8501 端口的 Colab 代理 URL
+    proxy_url = eval_js(f'google.colab.kernel.proxyPort(8501)')
+
+    if proxy_url:
+        display(HTML(f"<hr><p style='font-size:1.3em; font-weight:bold; margin:20px 0; text-align:center; color:green;'>🎉 太棒了！您的應用程式應該可以透過下面的連結訪問：</p>" \
+                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>點此開啟應用程式</a></p>" \
+                     f"<p style='font-size:0.9em; color:gray; text-align:center; margin-top:10px;'>連結地址: {proxy_url}</p>" \
+                     "<p style='font-size:0.9em; color:gray; text-align:center;'>如果點擊無效，請檢查 Streamlit 是否仍在 Colab 背景中正常運行（可能需要查看上方 `streamlit run` 命令的日誌），或嘗試重新執行此儲存格。有時可能需要更長的等待時間。</p><hr>"))
+    else:
+        display(HTML("<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ 未能自動獲取到 Colab 代理網址。</p>" \
+                     "<p style='color:orange; text-align:center;'>這可能是因為 Streamlit 未能成功啟動，或者 Colab 未能及時分配代理端口。</p>" \
+                     "<p style='color:orange; text-align:center;'>請檢查上方 `streamlit run` 命令的輸出日誌。如果看到 'External URL'，您可以嘗試手動複製該網址到瀏覽器中訪問。</p>" \
+                     "<p style='color:orange; text-align:center;'>如果問題持續，嘗試增加上面程式碼中的 `WAIT_SECONDS` 值（例如改為 30）再試一次。</p><hr>"))
+except Exception as e:
+    display(HTML(f"<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ 嘗試獲取代理網址時發生錯誤:</p><p style='color:red; text-align:center;'>{str(e)}</p>" \
+                 "<p style='color:orange; text-align:center;'>請檢查上方 `streamlit run` 命令的輸出日誌，並嘗試手動複製 'External URL' 到瀏覽器中訪問。</p><hr>"))
+
+print("\n" + "="*70)
+print("自動獲取連結的嘗試已完成。")
+print(" - 如果上方出現了綠色的「點此開啟應用程式」按鈕，請優先使用它。")
+print(" - 如果自動獲取失敗，請回看 `!streamlit run` 命令的日誌輸出，尋找 'External URL' 並手動複製訪問。")
+print(" - 確保此 Colab Notebook 保持運行狀態以使應用程式可訪問。")
 ```
 **執行說明：**
 *   執行後，Colab 會提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
@@ -287,39 +314,61 @@ After Cell 1 executes successfully, copy the following into the second Colab cel
 # Cell 2: After Cell 1 has run successfully, execute this cell to launch the Streamlit application.
 
 print("🚀 Launching Streamlit application...")
-print("⏳ Please wait, Streamlit is preparing to launch...")
+print("⏳ Please wait, Streamlit is preparing to launch (this might take a moment)...")
+print("After the command executes, the logs below will show Streamlit's startup status.")
+print("Next, we will attempt to automatically fetch an accessible Colab proxy URL for you.")
 print("\n" + "="*70)
-print("✨ Your Human-Computer Collaborative Analysis Platform is almost ready! ✨")
-print("="*70 + "\n")
-print("After the Streamlit application starts, Colab's output log will display several different URLs.")
-print("Please find and copy the 【External URL】. It will look something like this:")
-print("   External URL: http://[a_series_of_numbers_IP_address]:8501")
-print("\n👉 Please copy the 【External URL】 above into your browser's address bar and try to access it.")
-print("This is the primary way to access the Streamlit application running in Colab from your local browser.")
-print("---")
-print("ℹ️ About other URLs:")
-print("1. Local URL (e.g., http://localhost:8501): Only accessible from within the Colab virtual machine itself.")
-print("2. Network URL (e.g., http://172.x.x.x:8501): Usually also restricted to the Colab internal network environment.")
-print("   You can【NOT】directly use these two URLs from your browser.")
-print("---")
-print("⚠️ Important Notes:")
-print("1. The IP address in the 【External URL】 is dynamically assigned and may change each time you restart the Colab runtime or the application.")
-print("2. If the 【External URL】 is not accessible, or if you see a message like 'Not exposing service to public IP' in Colab's output,")
-print("   you can try the following Colab feature to manually obtain an accessible proxy URL:")
-print("   In Colab's output log, look for a button or link suggesting 'Expose port xxx' or if Colab automatically generates a URL formatted like `*.notebook.googleusercontent.com/proxy/...`.")
-print("   If Colab doesn't provide one automatically, you can also try executing the following Python commands in a new Colab code cell (after running Cell 2):")
-print("   `from google.colab.output import eval_js`")
-print("   `print(eval_js(f'google.colab.kernel.proxyPort(8501)'))`")
-print("   This will attempt to generate a proxy URL formatted like `*.googleusercontent.com/proxy/8501/`.")
-print("3. The application needs to remain running in Colab to be continuously accessible.")
-print("\n" + "="*70)
-print("Executing Streamlit command to launch the application...")
 
-!streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501
+# Launch Streamlit application in the background
+# Note: Since !streamlit run continuously outputs logs and occupies the cell,
+# we cannot directly run Python after it to capture its specific output or know exactly when it's ready.
+# Colab's behavior is that if a port is listened on, it usually tries to provide a proxy.
+# The code below gives some time after the Streamlit command is issued, then tries to query this proxy.
+
+!streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501 &
+
+# To allow subsequent Python code (for fetching the proxy URL) to run,
+# we run Streamlit in the background using '&'.
+# However, doing this directly in a Colab Notebook might mean logs don't always appear neatly under the command.
 
 print("\n" + "="*70)
-print("Streamlit application has attempted to launch. Please carefully check the log output above, find the 【External URL】, and try to access it.")
-print("If there are issues with the launch, error messages will usually appear in the log.")
+print("Streamlit application has been launched in the background.")
+print("Now attempting to automatically fetch and display the Colab proxy access URL...")
+print("If Streamlit has successfully started on port 8501, a clickable link should appear below.")
+
+import time
+from IPython.display import display, HTML
+from google.colab.output import eval_js
+
+# Allow some time for Streamlit and Colab proxy to initialize
+# This duration might need adjustment based on actual performance
+WAIT_SECONDS = 15
+print(f"⏳ Please wait about {WAIT_SECONDS} seconds while we generate the access link...")
+time.sleep(WAIT_SECONDS)
+
+try:
+    # Attempt to get the Colab proxy URL for port 8501
+    proxy_url = eval_js(f'google.colab.kernel.proxyPort(8501)')
+
+    if proxy_url:
+        display(HTML(f"<hr><p style='font-size:1.3em; font-weight:bold; margin:20px 0; text-align:center; color:green;'>🎉 Great! Your application should be accessible via the link below:</p>" \
+                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>Click here to open the Application</a></p>" \
+                     f"<p style='font-size:0.9em; color:gray; text-align:center; margin-top:10px;'>Link address: {proxy_url}</p>" \
+                     "<p style='font-size:0.9em; color:gray; text-align:center;'>If clicking doesn't work, please check if Streamlit is still running correctly in the Colab background (you might need to check the logs from the `streamlit run` command above), or try re-running this cell. Sometimes, a longer wait time might be needed.</p><hr>"))
+    else:
+        display(HTML("<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ Failed to automatically fetch the Colab proxy URL.</p>" \
+                     "<p style='color:orange; text-align:center;'>This might be because Streamlit failed to start, or Colab couldn't assign a proxy port in time.</p>" \
+                     "<p style='color:orange; text-align:center;'>Please check the output log from the `streamlit run` command above. If you see an 'External URL', you can try manually copying that URL into your browser.</p>" \
+                     "<p style='color:orange; text-align:center;'>If the issue persists, try increasing the `WAIT_SECONDS` value in the code above (e.g., to 30) and try again.</p><hr>"))
+except Exception as e:
+    display(HTML(f"<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ An error occurred while trying to fetch the proxy URL:</p><p style='color:red; text-align:center;'>{str(e)}</p>" \
+                 "<p style='color:orange; text-align:center;'>Please check the output log from the `streamlit run` command above and try manually copying the 'External URL' into your browser.</p><hr>"))
+
+print("\n" + "="*70)
+print("Attempt to automatically fetch the link is complete.")
+print(" - If you see a green 'Click here to open the Application' button above, please use that first.")
+print(" - If automatic fetching failed, please refer back to the log output from the `!streamlit run` command for the 'External URL' and try accessing it manually.")
+print(" - Ensure this Colab Notebook remains running for the application to be accessible.")
 ```
 **Execution Notes:**
 *   Click the `https://*.googleusercontent.com/proxy/8501/` URL from Colab output.
