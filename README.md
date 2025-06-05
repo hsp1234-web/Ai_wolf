@@ -27,6 +27,7 @@
 ```python
 # === Colab 環境設置與 Ai_wolf 專案部署 ===
 # Cell 1: 請執行此儲存格以完成所有初始設定。
+import os
 
 # --- 1. 安裝必要的 Python 套件 ---
 print("正在安裝必要的 Python 套件 (streamlit, google-generativeai, yfinance, pandas)...")
@@ -42,23 +43,26 @@ try:
     print("Google Drive 掛載成功！\n")
 except Exception as e:
     print(f"Google Drive 掛載失敗: {e}")
-    print("請檢查彈出視窗中的授權步驟，並確保已授權。如果問題持續，請嘗試在 Colab 選單中選擇 '執行階段' -> '中斷並刪除執行階段'，然後重新執行此儲存格。")
-    raise
+    print("請檢查彈出視窗中的授權步驟，並確保已授權。如果問題持續，請嘗試在 Colab 選單中選擇 '執行階段' -> '中斷並刪除執行階段'，然後重新執行此儲存格。") # 註：Colab 特有的執行階段管理提示
+    raise # 拋出異常以停止執行，如果掛載失敗
 
 # --- 3. 定義專案路徑並建立目標資料夾 ---
+# GDRIVE_PROJECT_DIR 將在此步驟定義，用於指定 Google Drive 中的專案目錄
 GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI"
 print(f"專案將部署到 Google Drive 路徑: {GDRIVE_PROJECT_DIR}")
+# 使用 !mkdir -p 執行 shell 指令來建立資料夾，如果尚不存在的話
 !mkdir -p "{GDRIVE_PROJECT_DIR}"
 print(f"已確認/建立專案目錄。\n")
 
 # --- 4. 從 GitHub 克隆或更新 Ai_wolf 專案程式碼 ---
 GIT_REPO_URL = "https://github.com/hsp1234-web/Ai_wolf.git"
-GIT_DIR_CHECK = f"{GDRIVE_PROJECT_DIR}/.git"
+GIT_DIR_CHECK = f"{GDRIVE_PROJECT_DIR}/.git" # 用於檢查 .git 目錄是否存在，以判斷是否為 Git 倉庫
 
 print(f"正在從 {GIT_REPO_URL} 獲取最新程式碼...")
-if [ -d "{GIT_DIR_CHECK}" ]; then
+if os.path.isdir(GIT_DIR_CHECK): # 使用 os.path.isdir 檢查目錄是否存在
     print("偵測到現有的專案 Git 倉庫，嘗試更新 (git pull)...")
-    import subprocess
+    import subprocess # 引入 subprocess 模組以執行 shell 指令
+    # 這是一個較穩健的更新方法：先 fetch 並 reset 到遠端 main 分支的最新狀態，然後再 pull
     git_pull_command = f"cd '{GDRIVE_PROJECT_DIR}' && git fetch origin main && git reset --hard origin/main && git pull origin main"
     print(f"執行更新指令: {git_pull_command}")
     process = subprocess.run(git_pull_command, shell=True, capture_output=True, text=True)
@@ -72,14 +76,17 @@ if [ -d "{GIT_DIR_CHECK}" ]; then
         print("這可能是由於本地修改衝突或網路問題。建議檢查上述錯誤，或考慮手動刪除 Google Drive 中的 'wolfAI' 目錄後重新執行此儲存格以進行全新克隆。")
 else:
     print(f"未找到現有 .git 倉庫，開始克隆專案從 {GIT_REPO_URL} 到 {GDRIVE_PROJECT_DIR} ...")
+    # 使用 !git clone 執行 shell 指令來克隆倉庫，--depth 1 表示淺克隆，只獲取最新的 commit
     !git clone --depth 1 "{GIT_REPO_URL}" "{GDRIVE_PROJECT_DIR}"
     print("專案克隆完成！")
 
 print("\n--- 5. 檢查專案檔案 ---")
 print(f"列出 {GDRIVE_PROJECT_DIR} 中的內容：")
+# 使用 !ls -la 執行 shell 指令列出檔案詳細資訊（包含隱藏檔案）
 !ls -la "{GDRIVE_PROJECT_DIR}"
-APP_PY_PATH = f"{GDRIVE_PROJECT_DIR}/app.py"
-if [ -f "{APP_PY_PATH}" ]; then
+APP_PY_PATH = f"{GDRIVE_PROJECT_DIR}/app.py" # 定義主應用程式檔案的路徑
+# 檢查主要 app.py 檔案是否存在
+if os.path.isfile(APP_PY_PATH): # 使用 os.path.isfile 檢查檔案是否存在
     print(f"\n成功找到主要應用程式檔案: {APP_PY_PATH}")
     print("\n✅ Cell 1 設定完成！您現在可以執行下一個儲存格 (Cell 2) 來啟動 Streamlit 應用程式了。")
 else:
@@ -170,10 +177,12 @@ This cell will:
 ```python
 # === Colab Environment Setup & Ai_wolf Project Deployment ===
 # Cell 1: Please run this cell to complete all initial setup.
+import os
 
 # --- 1. Install Necessary Python Packages ---
 print("Installing necessary Python packages (streamlit, google-generativeai, yfinance, pandas)...")
 !pip install streamlit google-generativeai yfinance pandas -q
+# Added pandas because yfinance might need it, and it's also used in app.py
 print("Package installation complete!\n")
 
 # --- 2. Mount Google Drive ---
@@ -184,23 +193,26 @@ try:
     print("Google Drive mounted successfully!\n")
 except Exception as e:
     print(f"Failed to mount Google Drive: {e}")
-    print("Please check the authorization steps in the pop-up window. If issues persist, try 'Runtime' -> 'Disconnect and delete runtime', then re-run this cell.")
-    raise
+    print("Please check the authorization steps in the pop-up window. If issues persist, try 'Runtime' -> 'Disconnect and delete runtime', then re-run this cell.") # Note: Colab-specific runtime management tip
+    raise # Raise exception to stop execution if mounting fails
 
 # --- 3. Define Project Path and Create Target Folder ---
+# GDRIVE_PROJECT_DIR will be defined here, specifying the project directory in Google Drive
 GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI"
 print(f"Project will be deployed to Google Drive path: {GDRIVE_PROJECT_DIR}")
+# Using !mkdir -p to execute a shell command to create the directory if it doesn't already exist
 !mkdir -p "{GDRIVE_PROJECT_DIR}"
 print(f"Project directory confirmed/created.\n")
 
 # --- 4. Clone or Update Ai_wolf Project Code from GitHub ---
 GIT_REPO_URL = "https://github.com/hsp1234-web/Ai_wolf.git"
-GIT_DIR_CHECK = f"{GDRIVE_PROJECT_DIR}/.git"
+GIT_DIR_CHECK = f"{GDRIVE_PROJECT_DIR}/.git" # Used to check if the .git directory exists, indicating a Git repository
 
 print(f"Fetching latest code from {GIT_REPO_URL}...")
-if [ -d "{GIT_DIR_CHECK}" ]; then
+if os.path.isdir(GIT_DIR_CHECK): # Use os.path.isdir to check if the directory exists
     print("Existing project Git repository detected, attempting to update (git pull)...")
-    import subprocess
+    import subprocess # Import subprocess module to execute shell commands
+    # This is a more robust update method: first fetch and reset to the latest state of the remote main branch, then pull
     git_pull_command = f"cd '{GDRIVE_PROJECT_DIR}' && git fetch origin main && git reset --hard origin/main && git pull origin main"
     print(f"Executing update command: {git_pull_command}")
     process = subprocess.run(git_pull_command, shell=True, capture_output=True, text=True)
@@ -214,14 +226,17 @@ if [ -d "{GIT_DIR_CHECK}" ]; then
         print("This could be due to local merge conflicts or network issues. Consider manually deleting the 'wolfAI' directory in Google Drive and re-running this cell for a fresh clone.")
 else:
     print(f"No existing .git repository found, cloning project from {GIT_REPO_URL} to {GDRIVE_PROJECT_DIR} ...")
+    # Using !git clone to execute a shell command to clone the repository, --depth 1 for a shallow clone (latest commit only)
     !git clone --depth 1 "{GIT_REPO_URL}" "{GDRIVE_PROJECT_DIR}"
     print("Project cloning complete!")
 
 print("\n--- 5. Verify Project Files ---")
 print(f"Listing contents of {GDRIVE_PROJECT_DIR}:")
+# Using !ls -la to execute a shell command to list file details (including hidden files)
 !ls -la "{GDRIVE_PROJECT_DIR}"
-APP_PY_PATH = f"{GDRIVE_PROJECT_DIR}/app.py"
-if [ -f "{APP_PY_PATH}" ]; then
+APP_PY_PATH = f"{GDRIVE_PROJECT_DIR}/app.py" # Define the path to the main application file
+# Check if the main app.py file exists
+if os.path.isfile(APP_PY_PATH): # Use os.path.isfile to check if the file exists
     print(f"\nSuccessfully found the main application file: {APP_PY_PATH}")
     print("\n✅ Cell 1 Setup Complete! You can now proceed to run Cell 2.")
 else:
