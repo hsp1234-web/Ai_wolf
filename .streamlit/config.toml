@@ -1,10 +1,86 @@
-[theme]
-primaryColor="#1A73E8"  # Gemini 主藍色
-backgroundColor="#1E1E2E" # 深炭灰藍背景 (示例，可調整)
-secondaryBackgroundColor="#2D2D44" # 稍淺的背景，用於卡片或容器 (示例)
-textColor="#FFFFFF" # 主要文字顏色 - 白色
-font="sans serif" # 使用無襯線字體
+# .streamlit/config.toml
 
-# 以下為可選，但有助於初步調整
-# headingColor = "#AECBFA" # 輔助淡紫色用於標題
-# linkColor = "#4FABFF" # 連結顏色
+# Streamlit 全局配置
+[global]
+# 設定為 True 以允許應用程式在無瀏覽器環境中運行 (例如 Colab)
+runOnSave = false
+# 禁用遙測數據收集
+gatherUsageStats = false
+
+# 伺服器相關配置
+[server]
+# 應用程式監聽的端口
+port = 8501
+# 設定為 True 使伺服器在無瀏覽器環境下正確運行
+headless = true
+# 允許跨來源請求 (CORS) - 根據需要調整
+enableCORS = true
+# enableXsrfProtection = true # 建議保持啟用以增強安全性
+
+# 日誌記錄配置
+[logger]
+# 可選的日誌級別: error, warning, info, debug
+level = "info" # 應用程式級別的日誌，會被 utils/log_utils.py 中的設置覆蓋
+
+# 外觀主題配置 (Theme)
+# 這些設定將定義 Streamlit 應用程式的基礎外觀。
+# style.css 中的規則可以進一步自定義和覆蓋這些基礎設定。
+[theme]
+primaryColor="#1A73E8"        # Gemini 主藍色 (用於按鈕、活動元素等)
+backgroundColor="#1E1E2E"      # 深藍灰色背景 (Gemini 暗色主題背景)
+secondaryBackgroundColor="#2D2D44" # 稍淺的背景，用於卡片、輸入框等元素的背景
+textColor="#FFFFFF"            # 主要文字顏色 (白色，以確保在深色背景上的可讀性)
+font="sans serif"              # 使用無襯線字體，保持簡潔現代感
+
+# 以下顏色設定可以註釋掉或移除，以便 style.css 完全控制這些細節
+# headingColor = "#AECBFA"      # 標題顏色 (淡紫色，可由 style.css 定義)
+# linkColor = "#82C0FF"         # 超連結顏色 (亮藍色，可由 style.css 定義)
+# codeFont = "monospace"
+
+# 瀏覽器相關配置
+[browser]
+# 設定為 False 以避免在伺服器啟動時自動打開瀏覽器
+serverAddress = "localhost" # 或您的伺服器地址
+gatherUsageStats = false    # 再次確認禁用遙測
+
+# 地圖元件配置 (如果使用 st.map)
+# [mapbox]
+# token = "your_mapbox_token" # 如果使用 Mapbox 服務，請填寫您的 token
+
+# 進階配置 (通常不需要修改)
+# [s3]
+# accessKeyId = "..."
+# secretAccessKey = "..."
+# bucket = "..."
+# url = "..."
+
+# [client]
+# toolbarMode = "developer" # "developer" 或 "viewer" 或 "minimal"
+# showSidebarNavigation = true
+# showFooter = true
+
+# [runner]
+# magicEnabled = true
+# enforceSerializableSessionState = "warn" # "off", "warn", "error"
+# maxSessionStateSize = 500 # MB
+# maxIframeHeight = 750
+# fastReruns = true
+
+# [deprecation]
+# showPyplotGlobalUse = false # 禁用 st.pyplot 全局使用的警告
+# showMapboxTokenNotSetWarning = false # 禁用 Mapbox token 未設置的警告
+# showFileUploaderEncodingChangesWarning = false # 禁用文件上傳編碼變更的警告
+# showTimezoneChangesWarning = false # 禁用時區變更的警告
+# showUnsafeAllowHtmlWarning = false # 禁用不安全 HTML 警告 (謹慎使用)
+# showErrorDetailsOnException = true # 在異常時顯示詳細錯誤訊息
+
+# [experimental]
+# widescreen = true # 已棄用，使用 st.set_page_config(layout="wide")
+# dataFrameSerialization = "arrow" # "legacy" or "arrow"
+# allowCloudUpload = false # 禁用從雲端上傳檔案的功能
+# fioriToolbar = false
+# useRichTooltip = true
+# newSidebarNavigation = true
+# enableWebsocketCompression = true
+# hideTopBar = false
+#壳

@@ -53,7 +53,9 @@ GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI"
 print(f"專案將部署到 Google Drive 路徑: {GDRIVE_PROJECT_DIR}")
 # 使用 !mkdir -p 執行 shell 指令來建立資料夾，如果尚不存在的話
 !mkdir -p "{GDRIVE_PROJECT_DIR}"
-print(f"已確認/建立專案目錄。\n")
+# 同時創建日誌目錄
+!mkdir -p "{GDRIVE_PROJECT_DIR}/logs"
+print(f"已確認/建立專案目錄及日誌目錄。\n")
 
 # --- 4. 從 GitHub 克隆或更新 Ai_wolf 專案程式碼 ---
 GIT_REPO_URL = "https://github.com/hsp1234-web/Ai_wolf.git"
@@ -101,132 +103,247 @@ else:
 *   **Google Drive 授權：** 首次執行或長時間未使用後，Colab 會彈出一個視窗要求您授權訪問 Google Drive。
 *   **GitHub 更新：** 此腳本會嘗試從 GitHub 拉取最新程式碼。
 
-### Cell 2: 啟動 Streamlit 應用程式
+### Cell 2: 啟動 Streamlit 應用程式並監控日誌
 
 在 Cell 1 成功執行完畢後，複製以下指令到 Colab Notebook 的第二個程式碼儲存格中，然後執行它。
+此儲存格會：
+1.  啟動 Streamlit 應用程式。
+2.  嘗試獲取並顯示一個可公開訪問的 Colab 代理 URL。
+3.  **保持運行狀態**以維持 Streamlit 服務，並會**即時輸出應用程式日誌**。
+4.  您可以透過**手動中斷此儲存格 (Interrupt execution)** 來停止 Streamlit 服務。
 
 ```python
-#@title 2. 🚀 啟動 Ai_wolf 應用並獲取訪問連結 (點此執行)
-# === Ai_wolf 專案啟動與連結獲取 ===
-# Cell 2: 執行此儲存格來啟動 Streamlit 應用程式，並自動獲取訪問連結。
+#@title 2. 🚀 啟動 Ai_wolf 應用 (兩階段啟動 & 日誌監控)
+# === Ai_wolf 專案啟動、連結獲取與日誌監控 (兩階段) ===
+# Cell 2: 執行此儲存格。首次執行會顯示準備按鈕。
+#         點擊該按鈕後 (會重新執行此儲存格)，將實際啟動應用並顯示日誌。
+#         您可以隨時手動中斷此儲存格來停止服務。
 
 import subprocess
 import time
 import os
+import threading
 from IPython.display import display, HTML, clear_output
 from google.colab.output import eval_js
+import urllib.parse # 用於創建帶參數的 URL
 
 # --- 配置參數 ---
-STREAMLIT_APP_PATH = "/content/drive/MyDrive/wolfAI/app.py"
+GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI"
+STREAMLIT_APP_PATH = f"{GDRIVE_PROJECT_DIR}/app.py"
+LOG_DIR = f"{GDRIVE_PROJECT_DIR}/logs"
+LOG_FILE_PATH = f"{LOG_DIR}/streamlit.log"
+
 PORT = 8501
-WAIT_SECONDS_FOR_SERVER = 15 # 等待伺服器啟動的時間
-MAX_RETRIES_FOR_URL = 3 # 嘗試獲取 URL 的最大次數
-RETRY_DELAY_SECONDS = 5 # 每次重試之間的延遲
+WAIT_SECONDS_FOR_SERVER = 15
+MAX_RETRIES_FOR_URL = 3
+RETRY_DELAY_SECONDS = 5
 
-# --- 清理先前輸出 (如果需要) ---
-# clear_output(wait=True) # 如果希望每次執行都清空之前此儲存格的輸出，取消此行註解
-
-print("🚀 正在準備啟動 Streamlit 應用程式...")
-print(f"   應用程式路徑: {STREAMLIT_APP_PATH}")
-print(f"   預計監聽端口: {PORT}")
-print("-" * 70)
-
-# --- 檢查 app.py 是否存在 ---
-if not os.path.exists(STREAMLIT_APP_PATH):
-    display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 錯誤：找不到 Streamlit 應用程式檔案！</p>" \
-                 f"<p style='color:red;'>   請確認路徑 <code style='color:red; background-color:#f0f0f0; padding:2px 4px; border-radius:3px;'>{STREAMLIT_APP_PATH}</code> 是否正確，</p>" \
-                 f"<p style='color:red;'>   並且您已成功執行 Cell 1 中的所有步驟。</p>"))
-    # 使用 raise SystemExit() 會終止儲存格執行但不會顯示 traceback
-    # 如果需要顯示 traceback，可以直接 raise Exception()
-    raise SystemExit("應用程式檔案 app.py 未找到，終止執行。")
-
-# --- 啟動 Streamlit 伺服器 ---
-streamlit_process = None
+# --- 狀態管理 ---
+# 透過 URL 參數來簡單模擬階段切換
+# google.colab.kernel.notebookPath() 在某些 Colab 環境下可能不按預期工作或引發錯誤,
+# 特別是如果 kernel 不是 'Python 3' (例如 'Python 3 with GPU')。
+# 使用 try-except 塊來優雅地處理這種情況。
 try:
-    print(f"⏳ 正在嘗試於背景啟動 Streamlit (約需 {WAIT_SECONDS_FOR_SERVER} 秒)...")
-    # 將 Streamlit 的 stdout 和 stderr 重定向，以避免其日誌充滿 Colab 輸出
-    # 如果需要調試 Streamlit 自身的啟動問題，可以移除 stdout 和 stderr 的重定向，或將其導向檔案
-    cmd = ["streamlit", "run", STREAMLIT_APP_PATH, "--server.port", str(PORT), "--server.headless", "true", "--browser.gatherUsageStats", "false"]
+    current_notebook_path = eval_js('google.colab.kernel.notebookPath()')
+    query_params = urllib.parse.parse_qs(urllib.parse.urlparse(current_notebook_path).query)
+    current_stage = query_params.get('stage', ['initial'])[0]
+except Exception as e_notebook_path:
+    print(f"注意：無法獲取 Colab Notebook 路徑參數來控制階段。錯誤: {e_notebook_path}")
+    print("將預設為 'initial' 階段。如果已點擊過啟動按鈕但未生效，請嘗試手動在網址列尾部添加 '?stage=launch' 並回車。")
+    current_stage = 'initial' # 預設到初始階段
 
-    # 注意：在 Colab 中，subprocess 的行為有時與本機不同，特別是對於長時間運行的伺服器。
-    # DEVNULL 可能會導致某些情況下 server 過早退出，如果遇到問題，可以嘗試重定向到檔案或移除重定向進行調試。
-    streamlit_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+if current_stage == 'initial':
+    clear_output(wait=True)
+    # 第一階段：顯示準備訊息和啟動按鈕
+    # 嘗試獲取當前 Notebook 的 URL 以便創建帶參數的連結
+    try:
+        button_url = eval_js('google.colab.kernel.notebookPath()') + "?stage=launch"
+        display_html = f"""
+            <div style='border: 2px solid #1A73E8; padding: 20px; border-radius: 10px; text-align: center; background-color: #e9f0fa;'>
+                <h2 style='color: #0D5ACB;'>準備啟動 Ai_wolf 分析平台</h2>
+                <p style='font-size:1.1em;'>點擊下方按鈕以開始啟動 Streamlit 應用程式並監控其日誌。</p>
+                <p style='margin: 25px 0;'>
+                    <a href='{button_url}' target='_self'
+                       style='padding:10px 20px; background-color:#1A73E8; color:white; text-decoration:none; border-radius:8px; font-size:1.1em; box-shadow: 0 2px 4px 0 rgba(0,0,0,0.2);'>
+                       🚀 啟動應用程式
+                    </a>
+                </p>
+                <p style='font-size:0.9em; color:gray;'>點擊後，此儲存格將重新執行並開始啟動程序。</p>
+            </div>
+        """
+    except Exception as e_button_url:
+        # 如果無法生成按鈕URL，顯示備用訊息
+        display_html = f"""
+            <div style='border: 2px solid #F44336; padding: 20px; border-radius: 10px; text-align: center; background-color: #fff0f0;'>
+                <h2 style='color: #C62828;'>啟動準備階段出錯</h2>
+                <p style='font-size:1.1em; color:#D32F2F;'>無法自動生成啟動按鈕的連結。</p>
+                <p>您可以嘗試手動在此 Colab Notebook 的網址尾部添加 <code>?stage=launch</code> 然後按 Enter 鍵刷新頁面以進入下一階段。</p>
+                <p>錯誤詳情: {e_button_url}</p>
+            </div>
+        """
+    display(HTML(display_html))
+    print("第一階段：已顯示準備訊息。如果看到按鈕，請點擊以繼續；否則請依照提示操作。")
 
-    print(f"   Streamlit 啟動指令已送出 (PID: {streamlit_process.pid if streamlit_process else '未知'})。")
-    print(f"   給予伺服器 {WAIT_SECONDS_FOR_SERVER} 秒進行初始化...")
-    time.sleep(WAIT_SECONDS_FOR_SERVER)
-
-    # 檢查 Streamlit 是否仍在運行
-    if streamlit_process.poll() is not None:
-        # 如果 poll() 返回非 None，表示進程已結束
-        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ Streamlit 似乎未能成功啟動或已意外終止。</p>" \
-                     f"<p style='color:orange;'>   請嘗試重新執行 Cell 1 確認環境，然後再次執行此 Cell 2。</p>" \
-                     f"<p style='color:orange;'>   如果問題持續，您可能需要檢查 `app.py` 是否有錯誤，或者嘗試移除上面 Popen 中的 `stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL` 來查看詳細日誌。</p>"))
-        raise SystemExit("Streamlit 進程未能持續運行。")
-
-    print("✅ Streamlit 應已在背景運行。")
+elif current_stage == 'launch':
+    clear_output(wait=True)
+    print("🚀 第二階段：正在準備啟動 Streamlit 應用程式...")
+    print(f"   應用程式路徑: {STREAMLIT_APP_PATH}")
+    print(f"   日誌檔案路徑: {LOG_FILE_PATH}")
+    print(f"   預計監聽端口: {PORT}")
     print("-" * 70)
 
-except Exception as e:
-    display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 啟動 Streamlit 時發生預期之外的錯誤:</p>" \
-                 f"<p style='color:red; font-family:monospace; white-space:pre-wrap;'>{str(e)}</p>" \
-                 f"<p style='color:orange;'>   請檢查錯誤訊息，確認 Streamlit 是否已正確安裝，以及相關路徑是否無誤。</p>"))
-    if streamlit_process and streamlit_process.poll() is None:
-        streamlit_process.terminate() # 嘗試終止進程
-    raise SystemExit(f"啟動 Streamlit 失敗: {str(e)}")
+    if not os.path.exists(STREAMLIT_APP_PATH):
+        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 錯誤：找不到 Streamlit 應用程式檔案！</p><p>路徑: {STREAMLIT_APP_PATH}</p>"))
+        raise SystemExit("應用程式檔案 app.py 未找到。")
 
-# --- 嘗試獲取 Colab 代理 URL ---
-print("🔗 現在嘗試獲取 Colab 代理訪問網址...")
-proxy_url = None
-for attempt in range(MAX_RETRIES_FOR_URL):
-    print(f"   嘗試第 {attempt + 1}/{MAX_RETRIES_FOR_URL} 次...")
+    os.makedirs(LOG_DIR, exist_ok=True)
+    with open(LOG_FILE_PATH, 'a') as f:
+        f.write(f"--- Colab 腳本日誌監控開始於 {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+    print(f"日誌檔案 {LOG_FILE_PATH} 已確認/創建。")
+    print("-" * 70)
+
+    streamlit_process = None
+    monitor_thread = None
+
     try:
-        proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
-        if proxy_url:
-            print(f"   🎉 成功獲取到代理 URL！")
-            break # 成功獲取到 URL，跳出循環
-    except Exception as e_evaljs:
-        print(f"      獲取 URL 第 {attempt + 1} 次失敗: {str(e_evaljs)[:100]}...") # 只顯示部分錯誤訊息避免過長
+        print(f"⏳ 正在嘗試於背景啟動 Streamlit (約需 {WAIT_SECONDS_FOR_SERVER} 秒)...")
+        cmd = ["streamlit", "run", STREAMLIT_APP_PATH, "--server.port", str(PORT), "--server.headless", "true", "--browser.gatherUsageStats", "false"]
+        streamlit_process = subprocess.Popen(cmd)
+        print(f"   Streamlit 啟動指令已送出 (PID: {streamlit_process.pid if streamlit_process else '未知'})。")
+        time.sleep(WAIT_SECONDS_FOR_SERVER)
 
-    if attempt < MAX_RETRIES_FOR_URL - 1: # 如果不是最後一次嘗試，則等待
-        print(f"      等待 {RETRY_DELAY_SECONDS} 秒後重試...")
-        time.sleep(RETRY_DELAY_SECONDS)
-print("-" * 70)
+        if streamlit_process.poll() is not None:
+            display(HTML(f"<p style='color:red; font-weight:bold;'>❌ Streamlit 未能成功啟動或已意外終止 (返回碼: {streamlit_process.returncode})。</p>"))
+            raise SystemExit(f"Streamlit 進程未能持續運行。")
+        print("✅ Streamlit 應已在背景運行。")
+        print("-" * 70)
 
-# --- 顯示結果 ---
-if proxy_url:
-    # 清理之前的 print 輸出，只顯示最終的按鈕和重要訊息
-    clear_output(wait=True)
-    display(HTML(f"<div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #f0fff0;'>" \
-                 f"<h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 應用程式已準備就緒！</h2>" \
-                 f"<p style='font-size:1.1em;'>您的 Ai_wolf 分析平台應該可以透過下面的連結訪問：</p>" \
-                 f"<p style='margin: 25px 0;'><a href='{proxy_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px; font-size:1.2em; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);'>🚀 點此開啟 Ai_wolf 應用程式</a></p>" \
-                 f"<p style='font-size:0.9em; color:gray;'>連結地址: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>" \
-                 f"<p style='font-size:0.9em; color:gray; margin-top:15px;'>如果點擊後應用程式未載入，請確保此 Colab Notebook 仍在運行，並可嘗試刷新頁面或重新執行此儲存格。</p>" \
-                 f"</div>"))
+    except Exception as e:
+        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 啟動 Streamlit 時發生錯誤:</p><p style='font-family:monospace;'>{str(e)}</p>"))
+        if streamlit_process and streamlit_process.poll() is None:
+            streamlit_process.terminate()
+        raise SystemExit(f"啟動 Streamlit 失敗: {str(e)}")
+
+    print("🔗 現在嘗試獲取 Colab 代理訪問網址...")
+    proxy_url = None
+    for attempt in range(MAX_RETRIES_FOR_URL):
+        print(f"   嘗試第 {attempt + 1}/{MAX_RETRIES_FOR_URL} 次...")
+        try:
+            proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
+            if proxy_url:
+                print(f"   🎉 成功獲取到代理 URL！")
+                break
+        except Exception as e_evaljs:
+            print(f"      獲取 URL 第 {attempt + 1} 次失敗 (可能服務尚未完全就緒): {str(e_evaljs)[:100]}...")
+        if attempt < MAX_RETRIES_FOR_URL - 1:
+            time.sleep(RETRY_DELAY_SECONDS)
+    print("-" * 70)
+
+    if proxy_url:
+        clear_output(wait=True)
+        display(HTML(f"""
+            <div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #e8f5e9;'>
+                <h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 應用程式已成功啟動！</h2>
+                <p style='font-size:1.1em;'>您的 Ai_wolf 分析平台可以透過下面的連結訪問：</p>
+                <p style='margin: 25px 0;'>
+                    <a href='{proxy_url}' target='_blank'
+                       style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:8px; font-size:1.2em; font-weight: 600; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); display:inline-block;'>
+                       🚀 點此開啟 Ai_wolf 應用程式
+                    </a>
+                </p>
+                <p style='font-size:0.9em; color:gray;'>連結地址: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>
+                <p style='font-size:0.9em; color:gray; margin-top:15px;'>如果點擊後應用程式未載入，請確保此 Colab Notebook 儲存格仍在運行。</p>
+                <p style='font-size:0.9em; color:orange; margin-top:10px;'>
+                   <b>注意：此儲存格將持續運行以顯示應用程式日誌。要停止服務，請手動中斷此儲存格的執行。</b>
+                </p>
+            </div>
+        """))
+
+        print("\n--- 應用程式日誌 (每 10 秒刷新一次) ---")
+    print(f"日誌來源檔案: {LOG_FILE_PATH}")
+    print("如果應用程式出現問題，此處可能會顯示相關錯誤訊息。")
+    print("您可以隨時手動中斷此儲存格 (點擊 Colab 中此儲存格左側的停止按鈕或使用 Ctrl+M I) 來停止服務。")
+    print("-" * 70, flush=True)
+
+    def monitor_streamlit_process():
+        streamlit_process.wait()
+        if streamlit_process.returncode is not None:
+            print(f"\n🔴 Streamlit 服務已停止 (返回碼: {streamlit_process.returncode})。請檢查日誌。日誌監控將終止。", flush=True)
+
+    monitor_thread = threading.Thread(target=monitor_streamlit_process)
+    monitor_thread.daemon = True
+    monitor_thread.start()
+
+    last_pos = 0
+    try:
+        while monitor_thread.is_alive():
+            try:
+                with open(LOG_FILE_PATH, 'r', encoding='utf-8') as f:
+                    f.seek(last_pos)
+                    new_logs = f.read()
+                    if new_logs:
+                        print(new_logs, end='', flush=True)
+                        last_pos = f.tell()
+            except FileNotFoundError:
+                print(f"警告：日誌檔案 {LOG_FILE_PATH} 未找到。等待應用程式創建它...", flush=True)
+            except Exception as e:
+                print(f"讀取日誌時發生錯誤: {e}", flush=True)
+
+            if streamlit_process.poll() is not None:
+                if monitor_thread.is_alive():
+                    print("\nStreamlit 進程已終止，但監控線程仍在運行。準備停止日誌監控。", flush=True)
+                break
+
+            time.sleep(10)
+        print("\n--- 日誌監控循環結束 (Streamlit 服務可能已停止) ---", flush=True)
+
+    except KeyboardInterrupt:
+        print("\n⌨️ 偵測到手動中斷 (KeyboardInterrupt)。正在停止服務...", flush=True)
+    except Exception as e_loop:
+        print(f"\n💥 日誌監控循環中發生未預期錯誤: {e_loop}", flush=True)
+    finally:
+        print("\n--- 正在嘗試終止 Streamlit 服務 ---", flush=True)
+        if streamlit_process and streamlit_process.poll() is None:
+            streamlit_process.terminate()
+            try:
+                streamlit_process.wait(timeout=10)
+                print("✅ Streamlit 服務已成功終止。", flush=True)
+            except subprocess.TimeoutExpired:
+                print("⚠️ Streamlit 服務終止超時，嘗試強制終止...", flush=True)
+                streamlit_process.kill()
+                streamlit_process.wait()
+                print("強制終止 Streamlit 服務。", flush=True)
+        else:
+            print("ℹ️ Streamlit 服務已經停止或未成功啟動。", flush=True)
+
+        if monitor_thread and monitor_thread.is_alive():
+            print("等待日誌監控線程結束...", flush=True)
+            monitor_thread.join(timeout=5)
+            if monitor_thread.is_alive():
+                 print("監控線程未能及時結束。", flush=True)
+        print("--- Cell 2 執行完畢 ---", flush=True)
+
 else:
-    # 清理之前的 print 輸出
     clear_output(wait=True)
     display(HTML(f"<div style='border: 2px solid #F44336; padding: 20px; border-radius: 10px; text-align: center; background-color: #fff0f0;'>" \
                  f"<h2 style='color: #C62828; margin-bottom:15px;'>❌ 未能自動獲取到 Colab 代理網址</h2>" \
                  f"<p style='font-size:1.1em; color:#D32F2F;'>我們未能為您的應用程式自動生成一個可點擊的 Colab 代理連結。</p>" \
                  f"<p style='color:orange; margin-top:15px;'>**可能的原因與建議：**</p>" \
                  f"<ul style='text-align:left; display:inline-block; margin-top:10px;'>" \
-                 f"<li>Streamlit 應用程式可能未能成功在背景啟動。</li>" \
+                 f"<li>Streamlit 應用程式可能未能成功在背景啟動 (檢查是否有錯誤訊息)。</li>" \
                  f"<li>Colab 的代理服務可能暫時無法使用或響應較慢。</li>" \
                  f"<li>您可以嘗試**重新執行一次此儲存格**。</li>" \
-                 f"<li>如果問題持續，請**檢查此儲存格執行時是否有任何錯誤日誌輸出**（在 `clear_output` 清理前）。Streamlit 本身可能會打印一個 'External URL'，您可以嘗試手動複製該 URL 到瀏覽器中訪問。</li>" \
+                 f"<li>如果問題持續，請**檢查此儲存格執行時是否有任何錯誤日誌輸出**。Streamlit 本身可能會打印一個 'External URL'，您可以嘗試手動複製該 URL 到瀏覽器中訪問。</li>" \
                  f"</ul>" \
                  f"<p style='font-size:0.9em; color:gray; margin-top:20px;'>請注意：應用程式需要在 Colab 中保持運行才能被訪問。</p>" \
                  f"</div>"))
+    print("\n❌ 未能啟動應用程式或獲取連結，儲存格將不會保持活動狀態。請檢查之前的錯誤訊息。")
 
-# 提示：如果 Streamlit 應用程式有自己的退出機制或使用者可以從其UI中停止它，
-# streamlit_process.terminate() 或 .kill() 可能需要在 Notebook 關閉或重新運行此儲存格前被調用，
-# 以避免端口衝突。但對於一個簡單的 README 腳本，我們暫時不處理這種複雜的生命週期管理。
-# 如果需要手動停止，使用者可以中斷 Colab 的執行階段。
 ```
 **執行說明：**
-*   執行後，Colab 會提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
+*   執行後，Colab 會嘗試提供一個 `https://[一串隨機字符].googleusercontent.com/proxy/8501/` 格式的網址。點擊此網址即可在瀏覽器新分頁中打開應用。
+*   **此儲存格會持續運行**以保持 Streamlit 服務，並會顯示來自 `{GDRIVE_PROJECT_DIR}/logs/streamlit.log` 的日誌。
+*   要停止服務，請**手動中斷此儲存格的執行** (例如，點擊儲存格左側的停止按鈕，或使用快捷鍵 `Ctrl+M I`)。
 
 ### 應用程式操作指南
 
@@ -338,7 +455,9 @@ GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI"
 print(f"Project will be deployed to Google Drive path: {GDRIVE_PROJECT_DIR}")
 # Using !mkdir -p to execute a shell command to create the directory if it doesn't already exist
 !mkdir -p "{GDRIVE_PROJECT_DIR}"
-print(f"Project directory confirmed/created.\n")
+# 同時創建日誌目錄
+!mkdir -p "{GDRIVE_PROJECT_DIR}/logs"
+print(f"Project directory confirmed/created and logs directory created.\n")
 
 # --- 4. Clone or Update Ai_wolf Project Code from GitHub ---
 GIT_REPO_URL = "https://github.com/hsp1234-web/Ai_wolf.git"
@@ -385,73 +504,209 @@ else:
 *   **Google Drive Authorization:** Authorize when prompted.
 *   **GitHub Updates:** The script attempts to pull the latest code.
 
-### Cell 2: Launch the Streamlit Application
+### Cell 2: Launch the Streamlit Application and Monitor Logs
 After Cell 1 executes successfully, copy the following into the second Colab cell and run it.
+This cell will:
+1. Launch the Streamlit application.
+2. Attempt to fetch and display a publicly accessible Colab proxy URL.
+3. **Remain running** to maintain the Streamlit service and will **output live application logs**.
+4. You can stop the Streamlit service by **manually interrupting this cell (Interrupt execution)**.
 
 ```python
-#@title 2. Launch Streamlit Application (Background Process)
-# === Ai_wolf Project Launch ===
-# Cell 2: After Cell 1 has run successfully, execute this cell to launch the Streamlit application.
-#         This cell will attempt to launch Streamlit in the background.
+#@title 2. 🚀 Launch Ai_wolf App, Get Link & Monitor Logs (Click to execute)
+# === Ai_wolf Project Launch, Link Retrieval & Log Monitoring ===
+# Cell 2: Execute this cell to launch the Streamlit application, automatically fetch the access link, and continuously output logs.
+#         You can manually interrupt this cell at any time to stop the service.
 
-print("🚀 Attempting to launch Streamlit application in the background...")
-print("⏳ Please wait a few seconds for the application to start running.")
-print("After this cell executes, please proceed to run 【the next cell (Cell 3)】 to get and display the application access link.")
-print("\n" + "="*70)
-print("Executing Streamlit command...")
-
-!streamlit run "/content/drive/MyDrive/wolfAI/app.py" --server.port 8501 &
-
-print("\n" + "="*70)
-print("The command to launch Streamlit in the background has been sent.")
-print("Please execute 【the next cell (Cell 3)】 to obtain the accessible link.")
-print("If Cell 3 is unable to fetch the link after a while, you can check the output log of this cell for an 'External URL' to copy manually.")
-```
-**Execution Notes:**
-*   Click the `https://*.googleusercontent.com/proxy/8501/` URL from Colab output.
-
-### Cell 3: Get and Display Application Access Link
-
-After Cell 2 has finished executing and indicated that Streamlit has been launched in the background, run this cell to obtain a publicly accessible link to the application.
-
-```python
-#@title 3. 🔗 Get and Display Application Access Link (Click to expand code)
-# === Ai_wolf Project Link Retrieval ===
-# Cell 3: After Streamlit is launched by Cell 2, execute this cell to get and display the access link.
-
-from IPython.display import display, HTML
-from google.colab.output import eval_js
+import subprocess
 import time
+import os
+import threading # For monitoring the Streamlit process
+from IPython.display import display, HTML, clear_output
+from google.colab.output import eval_js
 
-print("⏳ Attempting to fetch the Colab proxy URL...")
-print("   This might take a few seconds, please wait.")
+# --- Configuration Parameters ---
+GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI" # Inherited from Cell 1 or redefined here
+STREAMLIT_APP_PATH = f"{GDRIVE_PROJECT_DIR}/app.py"
+LOG_DIR = f"{GDRIVE_PROJECT_DIR}/logs" # Log directory
+LOG_FILE_PATH = f"{LOG_DIR}/streamlit.log" # Streamlit app should output logs here
 
-# Allow Colab some time to register the port and prepare the proxy
-# If your Streamlit application is large or starts slowly, you might need to increase this delay
-time.sleep(8) # Wait for 8 seconds
+PORT = 8501 # Port for the Streamlit app
+WAIT_SECONDS_FOR_SERVER = 15
+MAX_RETRIES_FOR_URL = 3
+RETRY_DELAY_SECONDS = 5
+
+# --- Clear Previous Output ---
+# clear_output(wait=True) # Uncomment to clear previous output of this cell on each run
+
+print("🚀 Preparing to launch Streamlit application...")
+print(f"   Application path: {STREAMLIT_APP_PATH}")
+print(f"   Log file path: {LOG_FILE_PATH}")
+print(f"   Expected listening port: {PORT}")
+print("-" * 70)
+
+# --- Check if app.py Exists ---
+if not os.path.exists(STREAMLIT_APP_PATH):
+    display(HTML(f"<p style='color:red; font-weight:bold;'>❌ Error: Streamlit application file not found!</p>" \
+                 f"<p style='color:red;'>   Please ensure the path <code style='color:red; background-color:#f0f0f0; padding:2px 4px; border-radius:3px;'>{STREAMLIT_APP_PATH}</code> is correct,</p>" \
+                 f"<p style='color:red;'>   and that you have successfully executed all steps in Cell 1.</p>"))
+    raise SystemExit("Application file app.py not found, terminating execution.")
+
+# --- Ensure Log Directory and File Exist ---
+os.makedirs(LOG_DIR, exist_ok=True)
+with open(LOG_FILE_PATH, 'a') as f: # 'a' mode creates the file if it doesn't exist
+    f.write(f"--- Colab script log monitoring started at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+print(f"Log file {LOG_FILE_PATH} confirmed/created.")
+print("-" * 70)
+
+# --- Launch Streamlit Server ---
+streamlit_process = None
+monitor_thread = None # Initialize monitor thread variable
 
 try:
-    proxy_url = eval_js(f'google.colab.kernel.proxyPort(8501)')
+    print(f"⏳ Attempting to launch Streamlit in the background (approx. {WAIT_SECONDS_FOR_SERVER} seconds)...")
+    cmd = ["streamlit", "run", STREAMLIT_APP_PATH,
+           "--server.port", str(PORT),
+           "--server.headless", "true",
+           "--browser.gatherUsageStats", "false"]
 
-    if proxy_url:
-        display(HTML(f"<hr><p style='font-size:1.3em; font-weight:bold; margin:20px 0; text-align:center; color:green;'>🎉 Great! Your application should be accessible via the link below:</p>" \
-                     f"<p style='font-size:1.2em; text-align:center;'><a href='{proxy_url}' target='_blank' style='padding:10px 15px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px;'>Click here to open Ai_wolf Application</a></p>" \
-                     f"<p style='font-size:0.9em; color:gray; text-align:center; margin-top:10px;'>Link address: {proxy_url}</p>" \
-                     "<p style='font-size:0.9em; color:gray; text-align:center;'>If the application doesn't load after clicking, please ensure Streamlit from Cell 2 is still running and consider re-running this Cell 3 (sometimes another try or a short wait helps).</p><hr>"))
-    else:
-        display(HTML("<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ Failed to automatically fetch the Colab proxy URL.</p>" \
-                     "<p style='color:orange; text-align:center;'>Please go back to the output log of Cell 2 to see if Streamlit started successfully and displayed an 'External URL'.</p>" \
-                     "<p style='color:orange; text-align:center;'>If you see an 'External URL', you can try manually copying that URL into your browser.</p>" \
-                     "<p style='color:orange; text-align:center;'>If Cell 2 did not launch Streamlit successfully, check its log for error messages.</p><hr>"))
+    streamlit_process = subprocess.Popen(cmd)
+
+    print(f"   Streamlit launch command sent (PID: {streamlit_process.pid if streamlit_process else 'Unknown'}).")
+    print(f"   Allowing server {WAIT_SECONDS_FOR_SERVER} seconds to initialize...")
+    time.sleep(WAIT_SECONDS_FOR_SERVER)
+
+    if streamlit_process.poll() is not None:
+        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ Streamlit appears to have failed to start or terminated unexpectedly (return code: {streamlit_process.returncode}).</p>" \
+                     f"<p style='color:orange;'>   Please check if `app.py` has syntax errors, or try checking Colab's 'Runtime' -> 'View runtime logs'.</p>" \
+                     f"<p style='color:orange;'>   If your Streamlit application has internal logging (e.g., writing to {LOG_FILE_PATH}), that file might contain more clues.</p>"))
+        raise SystemExit(f"Streamlit process failed to stay running (return code: {streamlit_process.returncode}).")
+
+    print("✅ Streamlit should now be running in the background.")
+    print("-" * 70)
+
 except Exception as e:
-    display(HTML(f"<hr><p style='color:red; font-weight:bold; text-align:center;'>❌ An error occurred while trying to fetch the proxy URL:</p><p style='color:red; text-align:center;'>{str(e)}</p>" \
-                 "<p style='color:orange; text-align:center;'>Please go back to the output log of Cell 2, see if Streamlit started successfully and displayed an 'External URL', then try manually copying that URL into your browser.</p><hr>"))
+    display(HTML(f"<p style='color:red; font-weight:bold;'>❌ An unexpected error occurred while launching Streamlit:</p>" \
+                 f"<p style='color:red; font-family:monospace; white-space:pre-wrap;'>{str(e)}</p>" \
+                 f"<p style='color:orange;'>   Please check the error message, ensure Streamlit is correctly installed, and paths are correct.</p>"))
+    if streamlit_process and streamlit_process.poll() is None:
+        streamlit_process.terminate()
+    raise SystemExit(f"Failed to launch Streamlit: {str(e)}")
 
-print("\n" + "="*70)
-print("Link retrieval attempt finished.")
-print(" - If a green 'Click here to open Ai_wolf Application' button appeared above, please use that link.")
-print(" - If link retrieval failed, please follow the instructions in the message above.")
+# --- Attempt to Get Colab Proxy URL ---
+print("🔗 Attempting to fetch Colab proxy access URL...")
+proxy_url = None
+for attempt in range(MAX_RETRIES_FOR_URL):
+    print(f"   Attempt {attempt + 1}/{MAX_RETRIES_FOR_URL}...")
+    try:
+        proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
+        if proxy_url:
+            print(f"   🎉 Successfully fetched proxy URL!")
+            break
+    except Exception as e_evaljs:
+        print(f"      Failed to fetch URL on attempt {attempt + 1}: {str(e_evaljs)[:100]}...")
+    if attempt < MAX_RETRIES_FOR_URL - 1:
+        print(f"      Waiting {RETRY_DELAY_SECONDS} seconds before retry...")
+        time.sleep(RETRY_DELAY_SECONDS)
+print("-" * 70)
+
+# --- Display Results and Monitor Logs ---
+if proxy_url:
+    clear_output(wait=True)
+    display(HTML(f"<div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #f0fff0;'>" \
+                 f"<h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 Application Ready!</h2>" \
+                 f"<p style='font-size:1.1em;'>Your Ai_wolf analysis platform should be accessible via the link below:</p>" \
+                 f"<p style='margin: 25px 0;'><a href='{proxy_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px; font-size:1.2em; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);'>🚀 Click here to open Ai_wolf Application</a></p>" \
+                 f"<p style='font-size:0.9em; color:gray;'>Link address: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>" \
+                 f"<p style='font-size:0.9em; color:gray; margin-top:15px;'>If the application doesn't load after clicking, ensure this Colab Notebook cell is still running and try refreshing the page.</p>" \
+                 f"<p style='font-size:0.9em; color:orange; margin-top:10px;'><b>Note: This cell will remain running to display application logs. To stop the service, manually interrupt the execution of this cell.</b></p>" \
+                 f"</div>"))
+
+    print("\n--- Application Logs (refreshes every 10 seconds) ---")
+    print(f"Log source file: {LOG_FILE_PATH}")
+    print("If the application encounters issues, relevant error messages may appear here.")
+    print("You can stop the service at any time by manually interrupting this cell (click the stop button to the left of this cell in Colab, or use Ctrl+M I).")
+    print("-" * 70, flush=True)
+
+    def monitor_streamlit_process():
+        streamlit_process.wait()
+        if streamlit_process.returncode is not None:
+            print(f"\n🔴 Streamlit service has stopped (return code: {streamlit_process.returncode}). Please check logs. Log monitoring will now terminate.", flush=True)
+
+    monitor_thread = threading.Thread(target=monitor_streamlit_process)
+    monitor_thread.daemon = True
+    monitor_thread.start()
+
+    last_pos = 0
+    try:
+        while monitor_thread.is_alive():
+            try:
+                with open(LOG_FILE_PATH, 'r', encoding='utf-8') as f:
+                    f.seek(last_pos)
+                    new_logs = f.read()
+                    if new_logs:
+                        print(new_logs, end='', flush=True)
+                        last_pos = f.tell()
+            except FileNotFoundError:
+                print(f"Warning: Log file {LOG_FILE_PATH} not found. Waiting for the application to create it...", flush=True)
+            except Exception as e:
+                print(f"Error reading log file: {e}", flush=True)
+
+            if streamlit_process.poll() is not None:
+                if monitor_thread.is_alive():
+                    print("\nStreamlit process terminated, but monitor thread is still alive. Preparing to stop log monitoring.", flush=True)
+                break
+
+            time.sleep(10)
+        print("\n--- Log monitoring loop ended (Streamlit service may have stopped) ---", flush=True)
+
+    except KeyboardInterrupt:
+        print("\n⌨️ Manual interruption detected (KeyboardInterrupt). Stopping service...", flush=True)
+    except Exception as e_loop:
+        print(f"\n💥 Unexpected error in log monitoring loop: {e_loop}", flush=True)
+    finally:
+        print("\n--- Attempting to terminate Streamlit service ---", flush=True)
+        if streamlit_process and streamlit_process.poll() is None:
+            streamlit_process.terminate()
+            try:
+                streamlit_process.wait(timeout=10)
+                print("✅ Streamlit service terminated successfully.", flush=True)
+            except subprocess.TimeoutExpired:
+                print("⚠️ Streamlit service termination timed out, attempting to kill...", flush=True)
+                streamlit_process.kill()
+                streamlit_process.wait()
+                print("Streamlit service killed.", flush=True)
+        else:
+            print("ℹ️ Streamlit service had already stopped or did not start successfully.", flush=True)
+
+        if monitor_thread and monitor_thread.is_alive():
+            print("Waiting for log monitor thread to end...", flush=True)
+            monitor_thread.join(timeout=5)
+            if monitor_thread.is_alive():
+                 print("Monitor thread did not end in time.", flush=True)
+        print("--- Cell 2 execution finished ---", flush=True)
+
+else:
+    clear_output(wait=True)
+    display(HTML(f"<div style='border: 2px solid #F44336; padding: 20px; border-radius: 10px; text-align: center; background-color: #fff0f0;'>" \
+                 f"<h2 style='color: #C62828; margin-bottom:15px;'>❌ Failed to automatically fetch Colab proxy URL</h2>" \
+                 f"<p style='font-size:1.1em; color:#D32F2F;'>We could not automatically generate a clickable Colab proxy link for your application.</p>" \
+                 f"<p style='color:orange; margin-top:15px;'>**Possible reasons and suggestions:**</p>" \
+                 f"<ul style='text-align:left; display:inline-block; margin-top:10px;'>" \
+                 f"<li>The Streamlit application might not have started successfully in the background (check for error messages).</li>" \
+                 f"<li>Colab's proxy service might be temporarily unavailable or slow to respond.</li>" \
+                 f"<li>You can try **re-running this cell**.</li>" \
+                 f"<li>If the issue persists, please **check this cell's execution log for any error messages**. Streamlit itself might print an 'External URL' that you can try copying manually into your browser.</li>" \
+                 f"</ul>" \
+                 f"<p style='font-size:0.9em; color:gray; margin-top:20px;'>Note: The application needs to remain running in Colab to be accessible.</p>" \
+                 f"</div>"))
+    print("\n❌ Failed to launch application or get link, cell will not remain active. Please check previous error messages.")
+
 ```
+**Execution Notes:**
+*   After execution, Colab will attempt to provide a URL like `https://[random_string].googleusercontent.com/proxy/8501/`. Click this link to open the application in a new browser tab.
+*   **This cell will continue to run** to keep the Streamlit service alive and will display logs from `{GDRIVE_PROJECT_DIR}/logs/streamlit.log`.
+*   To stop the service, **manually interrupt the execution of this cell** (e.g., by clicking the stop button to the left of the cell or using the shortcut `Ctrl+M I`).
 
 ### Application Usage Guide
 

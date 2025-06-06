@@ -1,595 +1,308 @@
-/* --- Global Theme Settings --- */
-/* These are foundational and apply unless overridden by specific theme classes */
+/* style.css */
+
+/* --- 全局字體大小和主題基礎 --- */
+/* 透過 inject_font_size_css() 和 inject_dynamic_theme_css() 注入的 div 來控制 */
+/* 例如: <div class='theme-dark font-medium'>... rest of app ...</div> */
+
+/* 預設 (亮色主題) 字體大小 */
 body {
-    font-family: "sans serif";
+    font-family: "sans serif", Arial, sans-serif; /* 確保與 config.toml 一致或提供備選 */
 }
 
-/* --- Dark Theme Specific Styles --- */
-.theme-dark body { /* Applied via JS or a wrapper div in Streamlit for dark mode */
-    background-color: #1E1E2E !important;
-    color: #E0E0FF !important;
+.font-small {
+    font-size: 0.875rem !important; /* 14px if base is 16px */
+}
+.font-medium {
+    font-size: 1rem !important;     /* 16px */
+}
+.font-large {
+    font-size: 1.125rem !important; /* 18px */
 }
 
+/* --- 亮色主題 (Light Theme) --- */
+/* .theme-light body 或 body (如果亮色是預設且無 .theme-light 包裹) */
+.theme-light {
+    --primary-color: #1A73E8; /* Streamlit 預設藍色常用作主色 */
+    --background-color: #FFFFFF;
+    --secondary-background-color: #F0F2F6; /* 稍暗的背景，用於卡片等 */
+    --text-color: #31333F; /* 深灰色文字 */
+    --sidebar-background-color: #F8F9FA;
+    --button-bg-color: var(--primary-color);
+    --button-text-color: #FFFFFF;
+    --button-hover-bg-color: #1765CC;
+    --button-active-bg-color: #1457B3;
+    --input-bg-color: #FFFFFF;
+    --input-border-color: #B0B0C0; /* 較淺的邊框 */
+    --input-text-color: var(--text-color);
+    --link-color: var(--primary-color);
+    --heading-color: #094890; /* 深藍色標題 */
+    --chat-user-bg: #E0EFFF;
+    --chat-model-bg: #F0F0F0;
+    --code-bg: #F0F2F6;
+    --code-text-color: #31333F;
+    --code-border-color: #D0D0D5;
+    --alert-success-bg: rgba(46, 184, 46, 0.15);
+    --alert-success-border: #2EB82E;
+    --alert-success-text: #1E7B1E;
+    --alert-warning-bg: rgba(255, 170, 0, 0.15);
+    --alert-warning-border: #FFAA00;
+    --alert-warning-text: #CC8800;
+    --alert-info-bg: rgba(26, 115, 232, 0.15);
+    --alert-info-border: #1A73E8;
+    --alert-info-text: #1A57B8;
+    --alert-error-bg: rgba(255, 79, 79, 0.15);
+    --alert-error-border: #FF4F4F;
+    --alert-error-text: #D93636;
+}
+
+.theme-light body {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}
+/* (更多亮色主題的詳細規則...) */
+
+
+/* --- 暗色主題 (Dark Theme - Gemini Inspired) --- */
+.theme-dark {
+    --primary-color: #1A73E8; /* Gemini 主藍色 */
+    --background-color: #1E1E2E; /* 深藍灰色背景 */
+    --secondary-background-color: #2D2D44; /* 稍淺的背景 */
+    --text-color: #FFFFFF; /* 主要文字顏色 */
+    --sidebar-background-color: #1F1F32; /* 側邊欄背景 */
+    --button-bg-color: #1A73E8;
+    --button-text-color: #FFFFFF;
+    --button-hover-bg-color: #4FABFF; /* Gemini 亮藍 */
+    --button-active-bg-color: #0D5ACB;
+    --input-bg-color: #2D2D44;
+    --input-border-color: #4FABFF; /* Gemini 亮藍邊框 */
+    --input-text-color: #FFFFFF;
+    --link-color: #82C0FF; /* Gemini 亮藍色連結 */
+    --heading-color: #AECBFA; /* Gemini 淡紫色標題 */
+    --chat-user-bg: #2D2D44;
+    --chat-user-border: #1A73E8;
+    --chat-model-bg: #383854;
+    --chat-model-border: #4FABFF;
+    --code-bg: #1E1E2E;
+    --code-text-color: #AECBFA;
+    --code-border-color: #4A4A6A;
+    --alert-success-bg: rgba(0, 170, 110, 0.15);
+    --alert-success-border: #00AA6E;
+    --alert-success-text: #99FFDD;
+    --alert-warning-bg: rgba(255, 170, 0, 0.15);
+    --alert-warning-border: #FFAA00;
+    --alert-warning-text: #FFDDAA;
+    --alert-info-bg: rgba(79, 171, 255, 0.15);
+    --alert-info-border: #4FABFF;
+    --alert-info-text: #B3DFFF;
+    --alert-error-bg: rgba(255, 79, 79, 0.15);
+    --alert-error-border: #FF4F4F;
+    --alert-error-text: #FFCDCD;
+}
+
+.theme-dark body, .theme-dark .stApp { /* .stApp 是 Streamlit 應用的主容器 */
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}
+
+/* 按鈕樣式 */
 .theme-dark .stButton > button {
+    background-color: var(--button-bg-color) !important;
+    color: var(--button-text-color) !important;
+    border: 1px solid var(--button-bg-color) !important; /* 或 #4FABFF */
     border-radius: 8px !important;
-    border: 1px solid #555555 !important; /* Colab-like */
-    background-color: #3A3A3A !important; /* Colab-like */
-    color: #FFFFFF !important;
-    padding: 0.5em 1em !important;
-    transition: background-color 0.3s ease !important;
-    font-weight: 500 !important;
+    padding: 0.6em 1.2em !important;
+    font-weight: 600 !important;
+    transition: background-color 0.3s ease, border-color 0.3s ease !important;
 }
-
 .theme-dark .stButton > button:hover {
-    background-color: #4A4A4A !important; /* Colab-like hover */
-    border-color: #666666 !important; /* Colab-like hover */
+    background-color: var(--button-hover-bg-color) !important;
+    border-color: var(--button-hover-bg-color) !important;
 }
-
 .theme-dark .stButton > button:active {
-    background-color: #2A2A2A !important; /* Colab-like active */
-    border-color: #444444 !important; /* Colab-like active */
+    background-color: var(--button-active-bg-color) !important;
+    border-color: var(--button-active-bg-color) !important;
 }
 
+/* 輸入框 (TextInput, TextArea, NumberInput) */
 .theme-dark .stTextInput input,
 .theme-dark .stTextArea textarea,
 .theme-dark .stNumberInput input {
-    background-color: #2D2D44 !important;
-    border: 1px solid #4FABFF !important;
+    background-color: var(--input-bg-color) !important;
+    border: 1px solid var(--input-border-color) !important;
+    color: var(--input-text-color) !important;
     border-radius: 6px !important;
-    color: #FFFFFF !important;
-    padding: 0.6em 0.7em !important;
 }
-
-.theme-dark .stTextInput input::placeholder,
-.theme-dark .stTextArea textarea::placeholder,
-.theme-dark .stNumberInput input::placeholder {
-    color: #AECBFA !important;
-    opacity: 0.7 !important;
-}
-
 .theme-dark .stTextArea textarea {
-    min-height: 80px;
+    min-height: 100px; /* 示例：給 TextArea 一個最小高度 */
 }
 
+/* 下拉選擇框 (Selectbox) */
 .theme-dark .stSelectbox > div[data-baseweb="select"] > div:first-child {
-    background-color: #2D2D44 !important;
-    border: 1px solid #4FABFF !important;
+    background-color: var(--input-bg-color) !important;
+    border: 1px solid var(--input-border-color) !important;
+    color: var(--input-text-color) !important;
     border-radius: 6px !important;
-    color: #FFFFFF !important;
-    padding: 0.25em 0.5em !important;
 }
-
-.theme-dark .stSelectbox svg {
-    fill: #AECBFA !important;
+.theme-dark .stSelectbox svg { /* 下拉箭頭顏色 */
+    fill: #AECBFA !important; /* Gemini 淡紫色/藍色系 */
 }
+/* 下拉選項的樣式 (如果需要進一步自定義) */
+/* .theme-dark div[data-baseweb="popover"] ul li { background-color: var(--secondary-background-color); color: var(--text-color); } */
+/* .theme-dark div[data-baseweb="popover"] ul li:hover { background-color: var(--primary-color); } */
 
-.theme-dark .stChatInput {
-    background-color: #1E1E2E !important;
-}
-
+/* 聊天輸入框 */
 .theme-dark .stChatInput textarea {
-    background-color: #2D2D44 !important;
-    border: 1px solid #4FABFF !important;
+    background-color: var(--input-bg-color) !important;
+    border: 1px solid var(--input-border-color) !important;
+    color: var(--input-text-color) !important;
     border-radius: 6px !important;
-    color: #FFFFFF !important;
-    padding: 0.5em !important;
+}
+.theme-dark .stChatInput button svg { /* 發送按鈕的圖標顏色 */
+    fill: var(--primary-color) !important;
+}
+.theme-dark .stChatInput button:hover svg {
+    fill: var(--button-hover-bg-color) !important;
 }
 
-.theme-dark .stChatInput textarea::placeholder {
-    color: #AECBFA !important;
-    opacity: 0.7 !important;
-}
 
+/* 展開框 (Expander) */
 .theme-dark .stExpander {
-    border: 1px solid #43436A !important;
-    border-radius: 8px !important;
-    background-color: #23233D !important;
+    border: 1px solid #43436A !important; /* 較深的邊框 */
+    background-color: #23233D !important; /* 比主背景稍亮的背景 */
+    border-radius: 8px !important; /* 圓角 */
 }
 .theme-dark .stExpander header {
-    background-color: #2D2D44 !important;
-    color: #AECBFA !important;
-    border-radius: 7px 7px 0 0 !important;
+    background-color: var(--secondary-background-color) !important; /* Header 背景 */
+    color: var(--heading-color) !important; /* Header 文字顏色 */
+    border-bottom: 1px solid #43436A !important; /* Header 和內容的分隔線 */
+    border-top-left-radius: 7px; /* 匹配外部圓角 */
+    border-top-right-radius: 7px;
 }
 .theme-dark .stExpander header:hover {
-    background-color: #383858 !important;
-}
-.theme-dark .stExpander p { /* Expander header text */
-    color: #AECBFA !important;
-}
-.theme-dark .stExpander div[data-testid="stExpanderDetails"] p { /* Expander content text */
-    color: #E0E0FF !important;
+    background-color: #383854 !important; /* Header hover 效果 */
 }
 
 
-.theme-dark .stMarkdown, .theme-dark p, .theme-dark div, .theme-dark span, .theme-dark label {
-     /* Most text color should be inherited from body or specific component styles */
+/* 提示框 (Alerts) */
+.theme-dark div[data-testid="stAlert"] {
+    border-left-width: 6px !important;
+    border-radius: 4px !important; /* 稍微的圓角 */
+    padding: 1rem !important;
 }
-.theme-dark h1, .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark h5, .theme-dark h6,
-.theme-dark .stMarkdown h1, .theme-dark .stMarkdown h2, .theme-dark .stMarkdown h3, .theme-dark .stMarkdown h4, .theme-dark .stMarkdown h5, .theme-dark .stMarkdown h6 {
-    color: #AECBFA !important;
+.theme-dark div[data-testid="stAlert"][data-alert-type="success"] {
+    border-left-color: var(--alert-success-border) !important;
+    background-color: var(--alert-success-bg) !important;
+    color: var(--alert-success-text) !important;
 }
-.theme-dark a {
-    color: #82C0FF !important;
+.theme-dark div[data-testid="stAlert"][data-alert-type="warning"] {
+    border-left-color: var(--alert-warning-border) !important;
+    background-color: var(--alert-warning-bg) !important;
+    color: var(--alert-warning-text) !important;
+}
+.theme-dark div[data-testid="stAlert"][data-alert-type="info"] {
+    border-left-color: var(--alert-info-border) !important;
+    background-color: var(--alert-info-bg) !important;
+    color: var(--alert-info-text) !important;
+}
+.theme-dark div[data-testid="stAlert"][data-alert-type="error"] {
+    border-left-color: var(--alert-error-border) !important;
+    background-color: var(--alert-error-bg) !important;
+    color: var(--alert-error-text) !important;
+}
+
+/* 標題 */
+.theme-dark h1, .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark h5, .theme-dark h6 {
+    color: var(--heading-color) !important;
+}
+
+/* 超連結 */
+.theme-dark a, .theme-dark a:visited {
+    color: var(--link-color) !important;
+    text-decoration: none; /* 移除下劃線，如果需要 */
 }
 .theme-dark a:hover {
-    color: #A8D5FF !important;
+    color: #A8DFFF !important; /* 連結 hover 顏色 */
+    text-decoration: underline;
 }
 
-.theme-dark .stDataFrame table, .theme-dark .stTable table {
-    color: #E0E0E0 !important;
-    border-collapse: collapse !important;
-    width: 100% !important;
-    background-color: #252538 !important;
-}
-.theme-dark .stDataFrame table thead th, .theme-dark .stTable table thead th {
-    background-color: #383854 !important;
-    color: #AECBFA !important;
-    border-bottom: 2px solid #4FABFF !important;
-    text-align: left !important;
-    padding: 10px 8px !important;
-}
-.theme-dark .stDataFrame table tbody tr:nth-child(even), .theme-dark .stTable table tbody tr:nth-child(even) {
-    background-color: #2D2D44 !important;
-}
-.theme-dark .stDataFrame table tbody tr:nth-child(odd), .theme-dark .stTable table tbody tr:nth-child(odd) {
-    background-color: #252538 !important;
-}
-.theme-dark .stDataFrame table td, .theme-dark .stTable table td {
-    border: 1px solid #4A4A6A !important;
-    padding: 8px !important;
-}
-.theme-dark .stDataFrame table tbody tr:hover, .theme-dark .stTable table tbody tr:hover {
-    background-color: #3E3E5E !important;
-}
-
-.theme-dark div[data-testid="stAlert"] {
-    border-radius: 6px !important;
-    padding: 0.8em 1em !important;
-    margin-bottom: 1em !important;
-    border: 1px solid transparent !important;
-}
-.theme-dark div[data-testid="stAlert"] p { /* Paragraphs within alerts */
-    padding-top: 0.25em;
-    color: inherit !important; /* Inherit color from parent alert for themed text */
-}
-.theme-dark div[data-testid="stAlert"] .stMarkdown p { /* Specifically for markdown within alerts */
-     color: inherit !important;
-}
-
-
-.theme-dark div[data-testid="stAlert"][kind="success"] {
-    background-color: rgba(0, 170, 110, 0.15) !important;
-    border-color: #00AA6E !important;
-    border-left: 6px solid #00AA6E !important;
-    color: #99FFDD !important; /* Text color for the alert box itself */
-}
-
-.theme-dark div[data-testid="stAlert"][kind="warning"] {
-    background-color: rgba(255, 170, 0, 0.15) !important;
-    border-color: #FFAA00 !important;
-    border-left: 6px solid #FFAA00 !important;
-    color: #FFDDAA !important;
-}
-
-.theme-dark div[data-testid="stAlert"][kind="info"] {
-    background-color: rgba(79, 171, 255, 0.15) !important;
-    border-color: #4FABFF !important;
-    border-left: 6px solid #4FABFF !important;
-    color: #B3DFFF !important;
-}
-
-.theme-dark div[data-testid="stAlert"][kind="error"] {
-    background-color: rgba(255, 79, 79, 0.15) !important;
-    border-color: #FF4F4F !important;
-    border-left: 6px solid #FF4F4F !important;
-    color: #FFCDCD !important;
-}
-
-
+/* 側邊欄 */
 .theme-dark section[data-testid="stSidebar"] {
-     background-color: #1F1F32 !important;
-     border-right: 1px solid #4A4A6A !important;
+    background-color: var(--sidebar-background-color) !important;
+    border-right: 1px solid #3A3A5A; /* 側邊欄右邊框 */
 }
 .theme-dark section[data-testid="stSidebar"] h1,
 .theme-dark section[data-testid="stSidebar"] h2,
 .theme-dark section[data-testid="stSidebar"] h3,
-.theme-dark section[data-testid="stSidebar"] div[data-testid="stHeading"] { /* For newer Streamlit versions */
-     color: #AECBFA !important;
+.theme-dark section[data-testid="stSidebar"] h4 {
+    color: var(--heading-color) !important; /* 側邊欄標題顏色 */
 }
-.theme-dark section[data-testid="stSidebar"] .stMarkdown p,
-.theme-dark section[data-testid="stSidebar"] label, /* Covers widget labels */
-.theme-dark section[data-testid="stSidebar"] .stCaption p { /* More specific for caption */
-     color: #D0D0F0 !important;
+.theme-dark section[data-testid="stSidebar"] .stMarkdown,
+.theme-dark section[data-testid="stSidebar"] .stTextInput > label,
+.theme-dark section[data-testid="stSidebar"] .stSelectbox > label,
+.theme-dark section[data-testid="stSidebar"] .stTextArea > label,
+.theme-dark section[data-testid="stSidebar"] .stNumberInput > label,
+.theme-dark section[data-testid="stSidebar"] .stButton > button, /* 側邊欄按鈕文字可能也需要調整 */
+.theme-dark section[data-testid="stSidebar"] small /* 用於 st.caption */
+ {
+    color: #D0D0F0 !important; /* 側邊欄普通文字和標籤顏色 */
 }
-
-.theme-dark .stChatMessage {
-    border-radius: 12px !important;
-    padding: 0.9em 1.1em !important;
-    margin-bottom: 0.9em !important;
-    max-width: 85% !important;
-    border: 1px solid transparent !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+.theme-dark section[data-testid="stSidebar"] .stButton > button { /* 側邊欄按鈕特定樣式 */
+    background-color: var(--secondary-background-color) !important; /* 使用次級背景色 */
+    border-color: var(--input-border-color) !important;
+    color: var(--text-color) !important;
 }
-
-.theme-dark div[data-testid="stChatMessageContentUser"] > div.stChatMessage {
-    background-color: #2D2D44 !important;
-    margin-left: auto !important;
-    margin-right: 0 !important;
-    border-color: #1A73E8 !important;
-}
-.theme-dark div[data-testid="stChatMessageContentUser"] .stMarkdown p {
-    color: #E0E0E0 !important;
-}
-
-.theme-dark div[data-testid="stChatMessageContentModel"] > div.stChatMessage {
+.theme-dark section[data-testid="stSidebar"] .stButton > button:hover {
     background-color: #383854 !important;
-    margin-right: auto !important;
-    margin-left: 0 !important;
-    border-color: #4FABFF !important;
-}
-.theme-dark div[data-testid="stChatMessageContentModel"] .stMarkdown p {
-    color: #FFFFFF !important;
+    border-color: var(--button-hover-bg-color) !important;
 }
 
-/* Model error messages (when st.error is used inside a model's chat_message) */
-.theme-dark div[data-testid="stChatMessageContentModel"] div[data-testid="stAlert"][kind="error"] {
-    background-color: rgba(255, 79, 79, 0.1) !important;
-    border: 1px solid #FF4F4F !important;
-    border-left-width: 6px !important;
+
+/* 聊天訊息 */
+.theme-dark div[data-testid="stChatMessageContentUser"] > div.stChatMessage {
+    background-color: var(--chat-user-bg) !important;
+    border: 1px solid var(--chat-user-border) !important;
     border-radius: 8px !important;
-    color: #FFCDCD !important; /* Text color for the alert box itself */
 }
-.theme-dark div[data-testid="stChatMessageContentModel"] div[data-testid="stAlert"][kind="error"] p,
-.theme-dark div[data-testid="stChatMessageContentModel"] div[data-testid="stAlert"][kind="error"] .stMarkdown p {
-    color: #FFCDCD !important; /* Ensure paragraph text also gets this color */
-}
-
-.theme-dark span[data-testid="chatAvatarIcon-user"],
-.theme-dark span[data-testid="chatAvatarIcon-model"] {
-    font-size: 1.6em !important;
-    margin-right: 0.6em !important;
-    line-height: 1 !important;
+.theme-dark div[data-testid="stChatMessageContentModel"] > div.stChatMessage {
+    background-color: var(--chat-model-bg) !important;
+    border: 1px solid var(--chat-model-border) !important;
+    border-radius: 8px !important;
 }
 
-.theme-dark .stChatMessage .stMarkdown pre {
-    background-color: #1E1E2E !important;
-    border: 1px solid #4A4A6A !important;
+/* 程式碼區塊 */
+.theme-dark .stMarkdown pre {
+    background-color: var(--code-bg) !important;
+    border: 1px solid var(--code-border-color) !important;
     padding: 0.8em !important;
     border-radius: 6px !important;
-    color: #E0E0E0 !important;
-    overflow-x: auto !important;
 }
-.theme-dark .stChatMessage .stMarkdown code {
-    background-color: #40405c !important;
-    color: #AECBFA !important;
-    font-family: "monospace" !important;
-    padding: 0.2em 0.4em !important;
-    border-radius: 4px !important;
-}
-.theme-dark .stChatMessage .stMarkdown pre code {
-    background-color: transparent !important;
-    padding: 0 !important;
+.theme-dark .stMarkdown code { /* 行內程式碼 */
+    background-color: #40405c !important; /* 稍亮的背景以便與 pre 區分 */
+    color: var(--code-text-color) !important;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
 }
 
-.theme-dark .stChatMessage .stMarkdown blockquote {
-    border-left: 4px solid #4FABFF !important;
-    margin-left: 0 !important;
-    padding-left: 1em !important;
-    color: #AECBFA !important;
+/* 針對 Streamlit UI 中可能出現的特定元素進行微調 (可選) */
+.theme-dark .stSpinner > div > div { /* Spinner 的動畫元素顏色 */
+    border-top-color: var(--primary-color) !important;
 }
 
-.theme-dark .stChatMessage .stMarkdown ul,
-.theme-dark .stChatMessage .stMarkdown ol {
-    padding-left: 1.8em !important;
+/* 確保 Markdown 中的表格也有合適的暗色主題樣式 */
+.theme-dark .stMarkdown table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1em;
 }
-.theme-dark .stChatMessage .stMarkdown li {
-    margin-bottom: 0.3em;
+.theme-dark .stMarkdown th, .theme-dark .stMarkdown td {
+    border: 1px solid #4A4A6A; /* 表格邊框顏色 */
+    padding: 0.5em 0.75em;
+    text-align: left;
 }
-
-.theme-dark ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+.theme-dark .stMarkdown th {
+    background-color: var(--secondary-background-color); /* 表頭背景 */
+    color: var(--heading-color); /* 表頭文字 */
 }
-.theme-dark ::-webkit-scrollbar-track {
-    background: #2D2D44;
-    border-radius: 10px;
+.theme-dark .stMarkdown tr:nth-child(even) {
+    background-color: rgba(45, 45, 68, 0.5); /* 表格偶數行背景，輕微透明 */
 }
-.theme-dark ::-webkit-scrollbar-thumb {
-    background: #4FABFF;
-    border-radius: 10px;
-}
-.theme-dark ::-webkit-scrollbar-thumb:hover {
-    background: #1A73E8;
-}
-
-
-/* --- Light Theme Specific Styles --- */
-.theme-light body {
-    background-color: #FFFFFF !important;
-    color: #31333F !important;
-}
-
-.theme-light .stButton > button {
-    background-color: #F0F2F6 !important;
-    color: #31333F !important;
-    border: 1px solid #DCDCDC !important;
-    font-weight: normal !important;
-}
-.theme-light .stButton > button:hover {
-    border-color: #FF4B4B !important;
-    color: #FF4B4B !important;
-    background-color: #F0F2F6 !important;
-}
-.theme-light .stButton > button:active {
-    border-color: #FF4B4B !important;
-    background-color: #E0E0E0 !important;
-}
-
-.theme-light .stTextInput input,
-.theme-light .stTextArea textarea,
-.theme-light .stNumberInput input {
-    background-color: #FFFFFF !important;
-    color: #31333F !important;
-    border: 1px solid #DCDCDC !important;
-}
-.theme-light .stTextInput input::placeholder,
-.theme-light .stTextArea textarea::placeholder,
-.theme-light .stNumberInput input::placeholder {
-    color: #888888 !important;
-    opacity: 1 !important;
-}
-
-.theme-light .stSelectbox > div[data-baseweb="select"] > div:first-child {
-    background-color: #FFFFFF !important;
-    color: #31333F !important;
-    border: 1px solid #DCDCDC !important;
-}
-.theme-light .stSelectbox svg {
-    fill: #31333F !important;
-}
-
-.theme-light .stChatInput {
-    background-color: #F0F2F6 !important;
-}
-.theme-light .stChatInput textarea {
-    background-color: #FFFFFF !important;
-    color: #31333F !important;
-    border: 1px solid #DCDCDC !important;
-}
-.theme-light .stChatInput textarea::placeholder {
-    color: #888888 !important;
-}
-
-.theme-light .stExpander {
-    border: 1px solid #DCDCDC !important;
-    background-color: #F9F9F9 !important;
-}
-.theme-light .stExpander header {
-    background-color: #F0F2F6 !important;
-    color: #31333F !important;
-    border-radius: 7px 7px 0 0 !important;
-}
-.theme-light .stExpander header:hover {
-    background-color: #E8E8E8 !important;
-}
-.theme-light .stExpander p { /* Expander header text */
-    color: #31333F !important;
-}
-.theme-light .stExpander div[data-testid="stExpanderDetails"] p { /* Expander content text */
-    color: #31333F !important;
-}
-
-
-.theme-light h1, .theme-light h2, .theme-light h3, .theme-light h4, .theme-light h5, .theme-light h6,
-.theme-light .stMarkdown h1, .theme-light .stMarkdown h2, .theme-light .stMarkdown h3, .theme-light .stMarkdown h4, .theme-light .stMarkdown h5, .theme-light .stMarkdown h6 {
-    color: #31333F !important;
-}
-.theme-light a {
-    color: #0068C9 !important;
-}
-.theme-light a:hover {
-    color: #00509E !important;
-}
-
-.theme-light .stDataFrame table, .theme-light .stTable table {
-    color: #31333F !important;
-    background-color: #FFFFFF !important;
-}
-.theme-light .stDataFrame table thead th, .theme-light .stTable table thead th {
-    background-color: #F0F2F6 !important;
-    color: #31333F !important;
-    border-bottom: 1px solid #DCDCDC !important;
-}
-.theme-light .stDataFrame table tbody tr:nth-child(even), .theme-light .stTable table tbody tr:nth-child(even) {
-    background-color: #F9F9F9 !important;
-}
-.theme-light .stDataFrame table tbody tr:nth-child(odd), .theme-light .stTable table tbody tr:nth-child(odd) {
-    background-color: #FFFFFF !important;
-}
-.theme-light .stDataFrame table td, .theme-light .stTable table td {
-    border: 1px solid #E6E6E6 !important;
-}
-.theme-light .stDataFrame table tbody tr:hover, .theme-light .stTable table tbody tr:hover {
-    background-color: #F0F0F0 !important;
-}
-
-.theme-light div[data-testid="stAlert"] {
-    /* Default text color will be inherited from .theme-light body or specific alert kind */
-}
-.theme-light div[data-testid="stAlert"] p,
-.theme-light div[data-testid="stAlert"] .stMarkdown p {
-    color: inherit !important; /* Inherit from parent alert for themed text */
-}
-
-.theme-light div[data-testid="stAlert"][kind="success"] {
-    background-color: #D4EDDA !important;
-    border-color: #C3E6CB !important;
-    border-left: 6px solid #28A745 !important;
-    color: #155724 !important;
-}
-
-.theme-light div[data-testid="stAlert"][kind="warning"] {
-    background-color: #FFF3CD !important;
-    border-color: #FFEEBA !important;
-    border-left: 6px solid #FFC107 !important;
-    color: #856404 !important;
-}
-
-.theme-light div[data-testid="stAlert"][kind="info"] {
-    background-color: #D1ECF1 !important;
-    border-color: #BEE5EB !important;
-    border-left: 6px solid #17A2B8 !important;
-    color: #0C5460 !important;
-}
-
-.theme-light div[data-testid="stAlert"][kind="error"] {
-    background-color: #F8D7DA !important;
-    border-color: #F5C6CB !important;
-    border-left: 6px solid #DC3545 !important;
-    color: #721C24 !important;
-}
-
-.theme-light section[data-testid="stSidebar"] {
-     background-color: #F0F2F6 !important;
-     border-right: 1px solid #DCDCDC !important;
-}
-.theme-light section[data-testid="stSidebar"] h1,
-.theme-light section[data-testid="stSidebar"] h2,
-.theme-light section[data-testid="stSidebar"] h3,
-.theme-light section[data-testid="stSidebar"] div[data-testid="stHeading"] {
-     color: #31333F !important;
-}
-.theme-light section[data-testid="stSidebar"] .stMarkdown p,
-.theme-light section[data-testid="stSidebar"] label,
-.theme-light section[data-testid="stSidebar"] .stCaption p {
-     color: #31333F !important;
-}
-
-.theme-light .stChatMessage {
-    border-color: #E0E0E0 !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-.theme-light div[data-testid="stChatMessageContentUser"] > div.stChatMessage {
-    background-color: #E9F5FF !important;
-    border-color: #007BFF !important;
-}
-.theme-light div[data-testid="stChatMessageContentUser"] .stMarkdown p {
-    color: #31333F !important;
-}
-
-.theme-light div[data-testid="stChatMessageContentModel"] > div.stChatMessage {
-    background-color: #F8F9FA !important;
-    border-color: #DCDCDC !important;
-}
-.theme-light div[data-testid="stChatMessageContentModel"] .stMarkdown p {
-    color: #31333F !important;
-}
-
-.theme-light div[data-testid="stChatMessageContentModel"] div[data-testid="stAlert"][kind="error"] {
-    background-color: #F8D7DA !important;
-    border-color: #F5C6CB !important;
-    border-left-width: 6px !important;
-    color: #721C24 !important;
-}
-.theme-light div[data-testid="stChatMessageContentModel"] div[data-testid="stAlert"][kind="error"] p,
-.theme-light div[data-testid="stChatMessageContentModel"] div[data-testid="stAlert"][kind="error"] .stMarkdown p {
-    color: #721C24 !important; /* Ensure paragraph text also gets this color */
-}
-
-.theme-light span[data-testid="chatAvatarIcon-user"],
-.theme-light span[data-testid="chatAvatarIcon-model"] {
-    /* Avatars typically don't need color changes for light/dark if they are emojis or standard icons */
-}
-
-.theme-light .stChatMessage .stMarkdown pre {
-    background-color: #F0F2F6 !important;
-    border: 1px solid #DCDCDC !important;
-    color: #31333F !important;
-}
-.theme-light .stChatMessage .stMarkdown code {
-    background-color: #E8E8E8 !important;
-    color: #D6336C !important;
-}
-.theme-light .stChatMessage .stMarkdown pre code {
-    background-color: transparent !important;
-}
-.theme-light .stChatMessage .stMarkdown blockquote {
-    border-left: 4px solid #007BFF !important;
-    color: #585858 !important;
-}
-
-.theme-light ::-webkit-scrollbar-track {
-    background: #F0F2F6;
-}
-.theme-light ::-webkit-scrollbar-thumb {
-    background: #C0C0C0;
-}
-.theme-light ::-webkit-scrollbar-thumb:hover {
-    background: #A0A0A0;
-}
-
-/* --- Responsive Adjustments --- */
-/* Notes from responsive review - to be implemented or refined */
-
-/* Example: General padding reduction for main sections on small screens */
-/* @media (max-width: 767px) {
-    .stApp > div > div > div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-    }
-    .stExpander {
-        margin-left: -0.5rem !important;
-        margin-right: -0.5rem !important;
-    }
-} */
-
-/* For very small screens */
-@media (max-width: 480px) {
-    .theme-dark .stButton > button,
-    .theme-light .stButton > button {
-        padding: 0.4em 0.6em !important; /* Smaller padding for buttons */
-        font-size: 0.9rem !important; /* Slightly smaller font for buttons */
-    }
-
-    .theme-dark .stChatMessage,
-    .theme-light .stChatMessage {
-        max-width: 95% !important; /* Chat messages take more width */
-        padding: 0.7em 0.9em !important;
-    }
-
-    .theme-dark .stDataFrame table td, .theme-dark .stTable table td,
-    .theme-light .stDataFrame table td, .theme-light .stTable table td {
-        padding: 4px !important; /* Smaller padding in tables */
-        font-size: 0.75rem !important; /* Smaller font in tables */
-    }
-    .theme-dark .stDataFrame table thead th, .theme-dark .stTable table thead th,
-    .theme-light .stDataFrame table thead th, .theme-light .stTable table thead th {
-        padding: 6px 4px !important;
-        font-size: 0.8rem !important;
-    }
-
-    /* Reduce padding for input/select fields on very small screens */
-    .theme-dark .stTextInput input,
-    .theme-dark .stTextArea textarea,
-    .theme-dark .stNumberInput input,
-    .theme-dark .stSelectbox > div[data-baseweb="select"] > div:first-child,
-    .theme-light .stTextInput input,
-    .theme-light .stTextArea textarea,
-    .theme-light .stNumberInput input,
-    .theme-light .stSelectbox > div[data-baseweb="select"] > div:first-child {
-        padding: 0.4em 0.5em !important;
-    }
-}
-
-/* For tablets and narrow desktops - if specific adjustments are needed */
-/* @media (min-width: 768px) and (max-width: 991px) {
-    body {
-
-    }
-} */
-
-/* Further notes:
-    - Sidebar stacking of st.columns for font size buttons is handled by Streamlit.
-    - st.file_uploader is generally responsive.
-    - Expander content (text) will wrap.
-*/
