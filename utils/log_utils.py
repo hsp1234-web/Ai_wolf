@@ -3,6 +3,8 @@ import logging
 import streamlit as st
 from io import StringIO
 import os
+import sys
+
 
 class StreamlitLogHandler(logging.Handler):
     """
