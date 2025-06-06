@@ -7,6 +7,12 @@ from config.app_settings import (
     DEFAULT_MAIN_GEMINI_PROMPT,
     font_size_css_map
 )
+from config.defaults import (
+    DEFAULT_YFINANCE_TICKERS,
+    DEFAULT_YFINANCE_PREVIEW_COUNT,
+    DEFAULT_FRED_SERIES_IDS,
+    DEFAULT_FRED_PREVIEW_COUNT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +62,40 @@ def initialize_session_state():
         st.session_state.select_all_sources = False # 新增一個全選/全不選的狀態
         st.session_state.data_start_date = None # 由用戶選擇
         st.session_state.data_end_date = None # 由用戶選擇
-        st.session_state.yfinance_tickers = "SPY, ^GSPC, BTC-USD, ETH-USD"
+        # st.session_state.yfinance_tickers = "SPY, ^GSPC, BTC-USD, ETH-USD" # Old
+        if 'selected_yfinance_tickers' not in st.session_state: # Check if already set (e.g. by user)
+            st.session_state.selected_yfinance_tickers = DEFAULT_YFINANCE_TICKERS
+        if 'yfinance_preview_count' not in st.session_state:
+            st.session_state.yfinance_preview_count = DEFAULT_YFINANCE_PREVIEW_COUNT
+
         st.session_state.yfinance_interval_label = "1 Day" # 對應 interval_options 的鍵
-        st.session_state.fred_series_ids = "GDP,CPIAUCSL"
+
+        # st.session_state.fred_series_ids = "GDP,CPIAUCSL" # Old
+        if 'selected_fred_series_ids' not in st.session_state: # Check if already set
+            st.session_state.selected_fred_series_ids = DEFAULT_FRED_SERIES_IDS
+        if 'fred_preview_count' not in st.session_state:
+            st.session_state.fred_preview_count = DEFAULT_FRED_PREVIEW_COUNT
+
         st.session_state.fetched_data_preview = {} # {source_name: pd.DataFrame}
         st.session_state.fetch_errors = {} # {source_name: error_message}
         st.session_state.fetch_data_button_clicked = False
         st.session_state.initialized_data_source_settings = True
+
+    # Rename yfinance_tickers and fred_series_ids to selected_... for clarity if they are user-modifiable
+    # However, the original code uses yfinance_tickers for the input string.
+    # Let's ensure the session state keys for the *actual lists* are distinct or handled correctly.
+    # The current logic in initialize_session_state is to set these if not already present.
+    # The user input components in main_page.py will bind to e.g. 'yfinance_tickers_input'
+    # and then the processing logic will use that to update 'selected_yfinance_tickers'.
+    # For now, the above changes correctly set the *default selected lists* if they are not already in session_state.
+    # The keys st.session_state.yfinance_tickers and st.session_state.fred_series_ids are used for the *input fields*
+    # in the data source selection section. We should initialize those as well.
+
+    if 'yfinance_tickers' not in st.session_state: # For the text input field
+        st.session_state.yfinance_tickers = ", ".join(DEFAULT_YFINANCE_TICKERS)
+    if 'fred_series_ids' not in st.session_state: # For the text input field
+        st.session_state.fred_series_ids = ", ".join(DEFAULT_FRED_SERIES_IDS)
+
     logger.info("數據源設定 session_state 初始化完畢。")
 
     # Gemini 互動設定

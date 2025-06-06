@@ -16,13 +16,16 @@ def render_chat():
 
     st.header("💬 步驟三：與 Gemini 進行分析與討論")
 
+    # 初始化 chat_message_counter (如果不存在)
+    if 'chat_message_counter' not in st.session_state:
+        st.session_state.chat_message_counter = 0
+
     # 聊天訊息容器
     chat_container_height = st.session_state.get("chat_container_height", 400)
     chat_container = st.container(height=chat_container_height)
     logger.debug(f"聊天介面：聊天容器高度設置為 {chat_container_height}px。")
 
     with chat_container:
-        # session_state.chat_history 應由 session_state_manager 初始化
         if "chat_history" not in st.session_state or not isinstance(st.session_state.chat_history, list):
             logger.warning("聊天介面：'chat_history' 未在 session_state 中正確初始化，將其重置為空列表。")
             st.session_state.chat_history = []
@@ -30,11 +33,47 @@ def render_chat():
         for i, message in enumerate(st.session_state.chat_history):
             role = message.get("role", "model")
             avatar_icon = "👤" if role == "user" else "✨"
+
             with st.chat_message(role, avatar=avatar_icon):
-                if message.get("is_error", False):
-                    st.error(message["parts"][0])
-                else:
-                    st.markdown(message["parts"][0]) # Markdown可以更好地顯示格式化的AI回應
+                # 如果是 user message，且其後是 model message，則在 user message 後顯示 expander
+                # 或者，如果這是最後一條 user message，且模型正在處理，也在其後顯示
+                if role == "user":
+                    # 顯示用戶訊息本身
+                    st.markdown(message["parts"][0])
+
+                    # 檢查此用戶訊息是否有對應的 "last_full_prompt_parts"
+                    # 我們將假設 prompt parts 與 user message 在 history 中的索引有一定關聯
+                    # 或者更簡單地，只為最新的 user message (如果模型即將回應) 或剛完成的回應顯示 expander
+                    # 為了簡化，我們將 expander 放在模型回應之前，並使用一個 session state 變數來保存最新的 prompt
+                    # 這個 expander 將會在模型回應渲染之前，如果 st.session_state.last_full_prompt_parts 存在
+
+                elif role == "model":
+                    # 在模型回應之前，檢查是否有 st.session_state.last_full_prompt_parts 需要顯示
+                    # 這個邏輯會在下面 Gemini API 調用後，添加模型回應之前處理
+                    if message.get("prompt_context", None): # "prompt_context" 將在下面添加
+                        with st.expander("查看發送給模型的完整提示", expanded=False):
+                            formatted_context = ""
+                            context_to_display = message["prompt_context"]
+                            if isinstance(context_to_display, list):
+                                for i_part, part_content_item in enumerate(context_to_display):
+                                    if hasattr(part_content_item, 'text'):
+                                        part_content_str = part_content_item.text
+                                    elif isinstance(part_content_item, str):
+                                        part_content_str = part_content_item
+                                    else:
+                                        part_content_str = str(part_content_item)
+                                    formatted_context += f"--- Part {i_part+1} ---\n{part_content_str}\n\n"
+                            else:
+                                formatted_context = str(context_to_display)
+
+                            # 使用唯一的 key，結合 message 的索引 i
+                            st.text_area("完整提示內容:", formatted_context, height=300, disabled=True, key=f"expander_prompt_{i}")
+
+                    # 顯示模型回應
+                    if message.get("is_error", False):
+                        st.error(message["parts"][0])
+                    else:
+                        st.markdown(message["parts"][0])
 
     user_input = st.chat_input("向 Gemini 提問或給出指令：", key="chat_user_input")
 
@@ -49,11 +88,12 @@ def render_chat():
 
         with st.spinner("Gemini 正在思考中，請稍候..."):
             model_response_text = ""
+            sent_prompt_parts_to_api = [] # 用於存儲實際發送的提示
             is_error_response = False
 
             try:
                 logger.debug("聊天介面：開始構建 Gemini API 的提示詞列表 (prompt_parts)。")
-                full_prompt_parts = []
+                full_prompt_parts = [] # 這是傳遞給 call_gemini_api 的列表
                 prompt_context_summary = [] # 用於記錄提示詞包含哪些上下文
 
                 if st.session_state.get("main_gemini_prompt"):
@@ -117,8 +157,9 @@ def render_chat():
                     logger.info(f"聊天介面：準備調用 call_gemini_api。模型: '{selected_model_name}', 有效金鑰數量: {len(valid_gemini_api_keys)}, 使用快取: '{selected_cache_name_for_api if selected_cache_name_for_api else '否'}'")
                     logger.debug(f"聊天介面：傳遞給 call_gemini_api 的 generation_config: {generation_config}")
 
-                    model_response_text = call_gemini_api(
-                        prompt_parts=full_prompt_parts,
+                    # 修改API調用以接收兩個返回值
+                    api_response_content, sent_prompt_parts_to_api = call_gemini_api(
+                        prompt_parts=full_prompt_parts, # full_prompt_parts 是構建好的列表
                         api_keys_list=valid_gemini_api_keys,
                         selected_model=selected_model_name,
                         global_rpm=st.session_state.get("global_rpm_limit", 3),
@@ -126,10 +167,12 @@ def render_chat():
                         generation_config_dict=generation_config,
                         cached_content_name=selected_cache_name_for_api
                     )
+                    model_response_text = api_response_content # API 回應的文本部分
+                    st.session_state.last_full_prompt_parts = sent_prompt_parts_to_api # 儲存發送的提示
 
                     if model_response_text.startswith("錯誤："):
                         is_error_response = True
-                        logger.warning(f"聊天介面：Gemini API 調用返回業務錯誤訊息: {model_response_text[:200]}...") #記錄部分錯誤信息
+                        logger.warning(f"聊天介面：Gemini API 調用返回業務錯誤訊息: {model_response_text[:200]}...")
                     else:
                         logger.info(f"聊天介面：Gemini API 成功返回響應。響應長度: {len(model_response_text)}。")
                         logger.debug(f"聊天介面：Gemini API 響應 (前100字符): {model_response_text[:100]}...")
@@ -141,11 +184,21 @@ def render_chat():
                 is_error_response = True
 
             logger.debug(f"聊天介面：將模型回應添加到聊天歷史。是否為錯誤: {is_error_response}。")
-            st.session_state.chat_history.append({
+
+            # 在這裡增加 chat_message_counter
+            st.session_state.chat_message_counter += 1
+
+            model_message_entry = {
                 "role": "model",
                 "parts": [model_response_text],
                 "is_error": is_error_response
-            })
+            }
+            # 如果我們有成功獲取到 prompt parts，將其附加到模型的回應條目中，以便 expander 使用
+            if sent_prompt_parts_to_api and not is_error_response: # 通常只在成功時顯示上下文
+                model_message_entry["prompt_context"] = sent_prompt_parts_to_api
+
+            st.session_state.chat_history.append(model_message_entry)
+
             st.session_state.gemini_processing = False
             logger.info("聊天介面：Gemini API 處理完畢，準備刷新頁面顯示結果。")
             st.rerun()

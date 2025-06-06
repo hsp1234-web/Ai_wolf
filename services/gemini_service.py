@@ -16,7 +16,7 @@ def call_gemini_api(
     global_tpm: int, # TPM is not directly used in this version of call_gemini_api but kept for future
     generation_config_dict: Optional[Dict[str, Any]] = None,
     cached_content_name: Optional[str] = None
-) -> str:
+) -> Tuple[str, List[str]]:
     """
     呼叫 Gemini API 以生成內容。日誌記錄已添加。
 
@@ -31,13 +31,14 @@ def call_gemini_api(
 
     Returns:
         str: Gemini API 返回的文本結果，或錯誤訊息。
+        List[str]: 發送給 API 的原始提示詞部分列表。
     """
     logger.info(f"開始執行 call_gemini_api。模型: {selected_model}, 是否使用快取: {'是' if cached_content_name else '否'}, 提示詞部分數量: {len(prompt_parts)}")
     logger.debug(f"詳細參數 - global_rpm: {global_rpm}, global_tpm: {global_tpm}, generation_config: {generation_config_dict}, cached_content_name: {cached_content_name}")
 
     if not api_keys_list: # api_keys_list 應包含從 session_state 中提取的有效金鑰
         logger.error("Gemini API 呼叫中止：API 金鑰列表為空。")
-        return "錯誤：未提供有效的 Gemini API 金鑰。"
+        return "錯誤：未提供有效的 Gemini API 金鑰。", prompt_parts
 
     # API 金鑰輪換和速率限制邏輯
     active_key_index = st.session_state.get('active_gemini_key_index', 0)
@@ -71,7 +72,7 @@ def call_gemini_api(
         st.session_state.active_gemini_key_index = (active_key_index + 1) % len(api_keys_list)
         next_api_key_candidate = api_keys_list[st.session_state.active_gemini_key_index]
         logger.warning(f"API 金鑰 ...{current_api_key[-4:]} (索引 {original_key_index}) RPM 已達上限。嘗試切換到下一個金鑰索引 {st.session_state.active_gemini_key_index} (尾號: ...{next_api_key_candidate[-4:]})。")
-        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} RPM 達到上限 ({global_rpm})。已自動輪換金鑰，請重試。"
+        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} RPM 達到上限 ({global_rpm})。已自動輪換金鑰，請重試。", prompt_parts
 
     try:
         logger.info(f"正在使用 API 金鑰 ...{current_api_key[-4:]} 配置 Gemini (模型: {selected_model})...")
@@ -115,29 +116,29 @@ def call_gemini_api(
         logger.info(f"從 Gemini API 獲取回應文本，長度: {len(response_text)}")
         if not response_text:
             logger.warning("Gemini API 返回的響應中沒有文本內容 (parts 或 text 均為空或無效)。")
-            return "錯誤：模型未返回任何文字內容。" # 更明確的錯誤訊息
+            return "錯誤：模型未返回任何文字內容。", prompt_parts # 更明確的錯誤訊息
 
         logger.debug(f"Gemini API 原始回應 (前100字符): {response_text[:100]}...")
-        return response_text
+        return response_text, prompt_parts
 
     except genai.types.BlockedPromptException as bpe:
         logger.error(f"Gemini API 錯誤 (BlockedPromptException) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {bpe}", exc_info=True)
-        return f"錯誤：提示詞被 Gemini API 封鎖。原因: {bpe}"
+        return f"錯誤：提示詞被 Gemini API 封鎖。原因: {bpe}", prompt_parts
     except genai.types.generation_types.StopCandidateException as sce:
         logger.error(f"Gemini API 錯誤 (StopCandidateException) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {sce}", exc_info=True)
-        return f"錯誤：內容生成因安全原因或其他限制而停止。原因: {sce}"
+        return f"錯誤：內容生成因安全原因或其他限制而停止。原因: {sce}", prompt_parts
     except google.api_core.exceptions.PermissionDenied as e:
         logger.error(f"Gemini API 錯誤 (PermissionDenied) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(e)}", exc_info=True)
-        return f"錯誤：呼叫 Gemini API 權限不足或 API 金鑰無效。詳細資訊: {str(e)}"
+        return f"錯誤：呼叫 Gemini API 權限不足或 API 金鑰無效。詳細資訊: {str(e)}", prompt_parts
     except google.api_core.exceptions.InvalidArgument as e:
         logger.error(f"Gemini API 錯誤 (InvalidArgument) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(e)}", exc_info=True)
-        return f"錯誤：呼叫 Gemini API 時參數無效 (例如模型名稱 '{selected_model}' 不正確或內容不當)。詳細資訊: {str(e)}"
+        return f"錯誤：呼叫 Gemini API 時參數無效 (例如模型名稱 '{selected_model}' 不正確或內容不當)。詳細資訊: {str(e)}", prompt_parts
     except google.api_core.exceptions.ResourceExhausted as re:
         logger.error(f"Gemini API 錯誤 (ResourceExhausted) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(re)} (可能是 RPM/TPM 超限)", exc_info=True)
-        return f"錯誤：Gemini API 資源耗盡 (例如 RPM 或 TPM 超限)。詳細資訊: {str(re)}"
+        return f"錯誤：Gemini API 資源耗盡 (例如 RPM 或 TPM 超限)。詳細資訊: {str(re)}", prompt_parts
     except Exception as e:
         logger.error(f"呼叫 Gemini API 時發生非預期錯誤 (金鑰 ...{current_api_key[-4:]}，模型 {selected_model}): {type(e).__name__} - {str(e)}", exc_info=True)
-        return f"呼叫 Gemini API 時發生非預期錯誤: {type(e).__name__} - {str(e)}"
+        return f"呼叫 Gemini API 時發生非預期錯誤: {type(e).__name__} - {str(e)}", prompt_parts
 
 
 def create_gemini_cache(
