@@ -255,6 +255,29 @@ else:
 *   程式碼主要透過 GitHub 更新。
 
 ---
+
+## 查看應用程式日誌 (Viewing Application Logs)
+
+本應用程式內建了詳細的日誌記錄功能，以協助使用者和開發者追蹤執行狀況及進行問題排查。
+
+### 如何查看日誌
+
+1.  **位置**：在應用程式主頁面的底部，你會找到一個名為「📄 應用程式日誌 (Application Logs)」的可展開區域。
+2.  **操作**：點擊該區域即可展開，查看即時的應用程式日誌訊息。日誌會顯示最新的事件在最上方。
+3.  **清除日誌**：在此區域內還有一個「清除日誌紀錄」按鈕，可以清除當前顯示在介面中的日誌。這不會影響到伺服器控制台的日誌輸出。
+
+### 日誌級別
+
+日誌級別預設為 `DEBUG`。這表示會記錄非常詳細的應用程式執行信息，包括函數調用、變數狀態、API 請求與回應等。這對於深入了解應用程式的內部運作和快速定位問題非常有幫助。
+
+### 日誌用途
+
+這些日誌主要用於：
+*   開發者進行應用程式偵錯。
+*   在遇到預期外的行為或錯誤時，提供詳細的執行上下文。
+*   幫助理解數據處理和 API 互動的流程。
+
+---
 ### 附錄 A：安全設定 Gemini API Key (推薦)
 
 (此部分內容與上一版 README.md 相同，保持不變)
@@ -454,6 +477,29 @@ print(" - If link retrieval failed, please follow the instructions in the messag
 *   Keep Colab Notebook running.
 *   Re-run Cell 1 and Cell 2 after runtime restarts.
 *   Code is primarily updated via GitHub.
+
+---
+
+## Viewing Application Logs
+
+This application includes detailed logging features to help users and developers track execution status and troubleshoot issues.
+
+### How to View Logs
+
+1.  **Location**: At the bottom of the application's main page, you will find an expandable section titled "📄 應用程式日誌 (Application Logs)".
+2.  **Operation**: Click on this section to expand it and view real-time application log messages. Logs are displayed with the newest events at the top.
+3.  **Clear Logs**: Within this section, there is also a "清除日誌紀錄" (Clear Logs) button that can clear the logs currently displayed in the interface. This does not affect log output in the server console.
+
+### Log Level
+
+The log level is set to `DEBUG` by default. This means that very detailed application execution information will be recorded, including function calls, variable states, API requests and responses, etc. This is very helpful for understanding the internal workings of the application and quickly identifying issues.
+
+### Purpose of Logs
+
+These logs are primarily used for:
+*   Developers to debug the application.
+*   Providing detailed execution context when encountering unexpected behavior or errors.
+*   Helping to understand the flow of data processing and API interactions.
 
 ---
 ### Appendix A: Securely Setting Gemini API Key (Recommended)
