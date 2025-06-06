@@ -1,0 +1,9 @@
+streamlit
+google-generativeai
+yfinance
+pandas
+fredapi
+requests
+matplotlib
+plotly
+numpy
