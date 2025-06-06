@@ -182,10 +182,11 @@ def render_main_page_content():
                 st.session_state.fetch_data_button_clicked = False
             else:
                 with st.spinner("正在獲取外部數據...請稍候..."):
+                    st.toast("⏳ 正在從外部源獲取數據，請耐心等候...", icon="⏳")
                     logger.debug("主頁面：開始獲取所選外部數據。")
                     if st.session_state.get("select_yfinance"):
                         actual_yf_interval = yf_interval_options[st.session_state.yfinance_interval_label]
-                        logger.info(f"主頁面：準備調用 fetch_yfinance_data。Tickers: {st.session_state.yfinance_tickers}, Interval: {actual_yf_interval}")
+                        logger.info(f"主頁面：準備調用 fetch_yfinance_data。Tickers: {st.session_state.yfinance_tickers}, Start: {st.session_state.data_start_date}, End: {st.session_state.data_end_date}, Interval: {actual_yf_interval}")
                         yf_data, yf_errs = fetch_yfinance_data(
                             st.session_state.yfinance_tickers, st.session_state.data_start_date,
                             st.session_state.data_end_date, actual_yf_interval
@@ -204,7 +205,7 @@ def render_main_page_content():
                             logger.error("主頁面：FRED API 金鑰未設定，無法獲取 FRED 數據。")
                             st.session_state.fetch_errors["fred"] = ["錯誤：FRED API 金鑰未在側邊欄的 API 金鑰管理中設定。"]
                         else:
-                            logger.info(f"主頁面：準備調用 fetch_fred_data。Series IDs: {st.session_state.fred_series_ids}")
+                            logger.info(f"主頁面：準備調用 fetch_fred_data。Series IDs: {st.session_state.fred_series_ids}, Start: {st.session_state.data_start_date}, End: {st.session_state.data_end_date}, Key_Present: {bool(fred_api_key_val)}")
                             fred_data, fred_errs = fetch_fred_data(
                                 st.session_state.fred_series_ids, st.session_state.data_start_date,
                                 st.session_state.data_end_date, fred_api_key_val
