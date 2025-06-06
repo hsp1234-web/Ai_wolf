@@ -76,7 +76,15 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
                 logger.warning(msg)
             else:
                 df.reset_index(inplace=True)
-                df.columns = df.columns.astype(str)
+                # 處理 yfinance 可能返回 MultiIndex 的情況
+                if isinstance(df.columns, pd.MultiIndex):
+                    logger.info(f"YFinance ticker '{ticker}': 檢測到 MultiIndex 列，正在進行扁平化處理。原始列: {df.columns.tolist()}")
+                    # 確保列名中的每個元素都是字符串，然後再連接
+                    df.columns = ['_'.join(map(str, col)).strip() if isinstance(col, tuple) else str(col).strip() for col in df.columns.values]
+                    logger.info(f"YFinance ticker '{ticker}': MultiIndex 列已扁平化。處理後列: {df.columns.tolist()}")
+                else:
+                    df.columns = df.columns.astype(str)
+
                 data_frames[ticker] = df
                 logger.info(f"成功下載 YFinance ticker '{ticker}' 的數據，共 {len(df)} 行。")
         except Exception as e:
@@ -199,6 +207,10 @@ def fetch_ny_fed_data():
                final_df (pd.DataFrame or None): 包含合併和處理後的數據的 DataFrame，如果失敗則為 None。
                errors (list): 獲取數據過程中發生的錯誤列表。
     """
+    logger.warning("NY Fed data fetching is temporarily disabled due to API issues.")
+    return None, ["NY Fed data fetching is temporarily disabled due to API issues. Please check back later or contact support for more information."]
+
+    # 以下是原始代碼，暫時被禁用
     logger.info("開始執行 fetch_ny_fed_data (紐約聯儲數據)。")
     all_positions_data = []
     errors = []

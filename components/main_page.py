@@ -2,6 +2,8 @@
 import streamlit as st
 import logging
 import pandas as pd # For displaying DataFrame previews
+import os
+import sys
 from services.file_processors import handle_file_uploads
 from services.data_fetchers import (
     fetch_yfinance_data,
@@ -26,6 +28,15 @@ def render_main_page_content():
     包括標題、文件上傳、外部數據源選擇和獲取、數據預覽和錯誤顯示等。
     """
     logger.info("主頁面：開始渲染主要內容 (render_main_page_content)。")
+
+    # --- Initialize session state for this page if not already done ---
+    if "selected_core_documents" not in st.session_state:
+        st.session_state.selected_core_documents = []
+        logger.debug("主頁面：'selected_core_documents' 初始化為空列表。")
+    if "wolf_data_file_map" not in st.session_state: # For storing relative_path -> full_path
+        st.session_state.wolf_data_file_map = {}
+        logger.debug("主頁面：'wolf_data_file_map' 初始化為空字典。")
+
     st.title("金融分析與洞察助理 (由 Gemini 驅動)")
 
     # --- API 金鑰缺失警告 ---
@@ -49,17 +60,18 @@ def render_main_page_content():
 
     # --- 步驟一：上傳文件 ---
     st.header("📄 步驟一：上傳與檢視文件")
-    st.caption("請上傳您需要分析的文字檔案、CSV 或 Excel 檔案。")
+    st.caption("請上傳您需要分析的文字檔案、CSV 或 Excel 檔案到當前會話。")
     logger.debug("主頁面：渲染文件上傳區域。")
 
     uploaded_files_from_widget = st.file_uploader(
-        "選擇要上傳的檔案 (可多選 .txt, .csv, .xls, .xlsx, .md, .py, .json, .xml, .html, .css, .js):",
+        "上傳新文件到當前會話 (可多選):",
         type=["txt", "csv", "xls", "xlsx", "md", "py", "json", "xml", "html", "css", "js"],
         accept_multiple_files=True,
-        key="main_file_uploader_widget"
+        key="main_file_uploader_widget",
+        help="此處上傳的文件將可用於下方選擇進行 All-in-One 分析，或用於其他獨立分析功能。"
     )
 
-    if uploaded_files_from_widget is not None:
+    if uploaded_files_from_widget: # Check if list is not empty
         logger.info(f"主頁面：用戶上傳了 {len(uploaded_files_from_widget)} 個檔案。調用 handle_file_uploads 處理。")
         handle_file_uploads(uploaded_files_from_widget)
         # handle_file_uploads 內部有詳細日誌，此處僅記錄用戶操作和調用。
@@ -86,11 +98,89 @@ def render_main_page_content():
                     st.text(f"無法直接預覽此檔案類型 (大小: {len(content_or_df)} 字節)。")
     else:
         logger.debug("主頁面：當前沒有已上傳的檔案。顯示提示信息。")
-        st.info("請上傳檔案以開始分析。")
+        st.info("請通過上方的「上傳新文件到當前會話」按鈕上傳文件。")
     st.markdown("---")
 
-    # --- 步驟二：引入外部數據 ---
-    st.header("📊 步驟二：引入外部數據 (可選)")
+    # --- 步驟二：選擇核心分析文件 (用於 All-in-One 報告) ---
+    st.header("🎯 步驟二：選擇核心分析文件 (用於 All-in-One 報告)")
+    st.caption("從 `Wolf_Data/source_documents/` 或已上傳的文件中選擇核心文檔。")
+    logger.debug("主頁面：渲染核心分析文件選擇區域。")
+
+    # --- Wolf_Data/source_documents/ 文件掃描邏輯 ---
+    IN_COLAB_MAIN_PAGE = 'google.colab' in sys.modules
+    WOLF_DATA_ROOT_COLAB = "/content/drive/MyDrive/Wolf_Data/source_documents/"
+    WOLF_DATA_ROOT_LOCAL = os.path.join(os.path.expanduser("~"), "Wolf_Data", "source_documents")
+    wolf_data_source_path_to_scan = WOLF_DATA_ROOT_COLAB if IN_COLAB_MAIN_PAGE else WOLF_DATA_ROOT_LOCAL
+
+    display_name_to_path = {}
+    if os.path.exists(wolf_data_source_path_to_scan):
+        logger.info(f"主頁面：開始掃描 Wolf_Data 目錄: {wolf_data_source_path_to_scan}")
+        for root, _, files in os.walk(wolf_data_source_path_to_scan):
+            for file in files:
+                if file.endswith((".txt", ".md")): # 只包含 .txt 和 .md 文件
+                    full_path = os.path.join(root, file)
+                    # 創建相對於 source_documents 的相對路徑作為顯示名稱
+                    relative_path = os.path.relpath(full_path, wolf_data_source_path_to_scan)
+                    display_name_to_path[relative_path] = full_path
+        st.session_state.wolf_data_file_map = display_name_to_path
+        logger.info(f"主頁面：掃描到 {len(display_name_to_path)} 個文件從 Wolf_Data。")
+    else:
+        logger.warning(f"主頁面：Wolf_Data 目錄 '{wolf_data_source_path_to_scan}' 不存在。")
+        st.session_state.wolf_data_file_map = {} # 確保是空字典
+
+    multiselect_options_wolf = list(st.session_state.wolf_data_file_map.keys())
+
+    # --- 已上傳文件列表 (作為備選或補充) ---
+    # 保持 uploaded_files_list 的可用性，但優先顯示 Wolf_Data 的文件
+    # 如果 Wolf_Data 為空，可以考慮使用 uploaded_files_list 作為備選
+
+    final_multiselect_options = multiselect_options_wolf
+    info_message = ""
+
+    if not final_multiselect_options:
+        info_message = f"提示：在 '{wolf_data_source_path_to_scan}' 中未找到 .txt 或 .md 文件。您也可以使用上方「步驟一」上傳臨時文件。"
+        # Fallback to uploaded files if Wolf_Data is empty and uploaded_files_list is not
+        # For now, let's keep it simple and prioritize Wolf_Data. If Wolf_Data is empty, user sees that.
+        # Fallback can be added later if needed.
+        # options_for_multiselect = st.session_state.get("uploaded_files_list", [])
+        # if options_for_multiselect:
+        #     info_message += " 您可以從已上傳的文件中選擇："
+        # else:
+        #     options_for_multiselect = ["示例-無可用文件.txt"] # Placeholder if everything is empty
+        #     info_message += " 也沒有已上傳的文件。"
+        st.info(info_message)
+        # If final_multiselect_options is empty, ensure multiselect doesn't break
+        if not final_multiselect_options: final_multiselect_options = ["目前無可選文件"]
+
+
+    else:
+        st.info(f"請從 '{os.path.basename(wolf_data_source_path_to_scan.rstrip(os.sep))}' 目錄 (或其子目錄) 中選擇文件。")
+
+    # 使用 relative paths (keys of wolf_data_file_map) for selection
+    # st.session_state.selected_core_documents should store these relative paths
+    selected_relative_paths = st.multiselect(
+        "選擇要進行 All-in-One 綜合分析的文件 (可複選):",
+        options=sorted(final_multiselect_options), # Sort for better UX
+        default=st.session_state.selected_core_documents,
+        key="main_selected_core_documents_multiselect"
+    )
+
+    if selected_relative_paths != st.session_state.selected_core_documents:
+        st.session_state.selected_core_documents = selected_relative_paths
+        logger.info(f"主頁面：用戶選擇的核心分析文件 (相對路徑) 已更新: {selected_relative_paths}")
+
+    if st.session_state.selected_core_documents:
+        st.markdown("##### 已選定核心文件 (相對路徑):")
+        for rel_path_doc_name in st.session_state.selected_core_documents:
+            st.markdown(f"- {rel_path_doc_name}")
+    else:
+        st.caption("尚未選定任何核心文件。")
+
+    st.markdown("---")
+
+
+    # --- 步驟三：引入外部數據 ---
+    st.header("📊 步驟三：引入外部數據 (可選)")
     logger.debug("主頁面：渲染外部數據源選擇區域。")
     with st.expander("📊 設定並載入外部數據 (點擊展開/收起)", expanded=False):
         st.caption("選擇 yfinance, FRED, NY Fed 等外部市場與總經數據源，設定參數並載入數據。")

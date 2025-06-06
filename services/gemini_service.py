@@ -35,19 +35,29 @@ def call_gemini_api(
     logger.info(f"開始執行 call_gemini_api。模型: {selected_model}, 是否使用快取: {'是' if cached_content_name else '否'}, 提示詞部分數量: {len(prompt_parts)}")
     logger.debug(f"詳細參數 - global_rpm: {global_rpm}, global_tpm: {global_tpm}, generation_config: {generation_config_dict}, cached_content_name: {cached_content_name}")
 
-    if not api_keys_list: # api_keys_list 應包含從 session_state 中提取的有效金鑰
-        logger.error("Gemini API 呼叫中止：API 金鑰列表為空。")
+    if not api_keys_list:
+        logger.error("Gemini API 呼叫中止：原始 API 金鑰列表為空。")
         return "錯誤：未提供有效的 Gemini API 金鑰。"
 
-    # API 金鑰輪換和速率限制邏輯
-    active_key_index = st.session_state.get('active_gemini_key_index', 0)
-    if active_key_index >= len(api_keys_list): # 防禦性檢查，如果索引越界則重置
-        active_key_index = 0
-        st.session_state.active_gemini_key_index = 0
-        logger.warning(f"偵測到 active_gemini_key_index ({st.session_state.get('active_gemini_key_index')}) 超出有效金鑰列表範圍 (長度 {len(api_keys_list)})，已重置為 0。")
+    # 過濾掉暫時無效的金鑰
+    temporarily_invalid_keys = st.session_state.get('temporarily_invalid_gemini_keys', [])
+    available_keys = [key for key in api_keys_list if key not in temporarily_invalid_keys]
+    logger.debug(f"原始 API 金鑰數量: {len(api_keys_list)}, 暫時無效金鑰數量: {len(temporarily_invalid_keys)}, 可用金鑰數量: {len(available_keys)}")
 
-    current_api_key = api_keys_list[active_key_index]
-    logger.info(f"選定 API 金鑰索引: {active_key_index} (金鑰尾號: ...{current_api_key[-4:] if current_api_key else 'N/A'})")
+    if not available_keys:
+        logger.error("Gemini API 呼叫中止：所有提供的 API 金鑰均已在本會話中被標記為無效。")
+        return "錯誤：所有可用的 Gemini API 金鑰均已在本會話中被標記為無效或權限不足。"
+
+    # API 金鑰輪換和速率限制邏輯 (基於 available_keys)
+    active_key_index = st.session_state.get('active_gemini_key_index', 0)
+    # 確保 active_key_index 在 available_keys 的有效範圍內
+    if active_key_index >= len(available_keys):
+        active_key_index = 0
+        logger.warning(f"active_gemini_key_index ({st.session_state.get('active_gemini_key_index')}) 超出可用金鑰列表範圍 (長度 {len(available_keys)})，已重置為 0。")
+    st.session_state.active_gemini_key_index = active_key_index # 更新 session_state 中的索引
+
+    current_api_key = available_keys[active_key_index]
+    logger.info(f"選定可用 API 金鑰索引: {active_key_index} (金鑰尾號: ...{current_api_key[-4:] if current_api_key else 'N/A'})")
 
     now = time.time()
     # 初始化 API 金鑰使用情況追蹤 (如果尚未存在)
@@ -55,6 +65,7 @@ def call_gemini_api(
         st.session_state.gemini_api_key_usage = {}
         logger.debug("已初始化 session_state.gemini_api_key_usage。")
 
+    # 為當前金鑰初始化使用追蹤（如果需要）
     if current_api_key not in st.session_state.gemini_api_key_usage:
         st.session_state.gemini_api_key_usage[current_api_key] = {'requests': [], 'tokens': []}
         logger.debug(f"已為金鑰 ...{current_api_key[-4:]} 初始化使用追蹤。")
@@ -67,10 +78,11 @@ def call_gemini_api(
     logger.info(f"金鑰 ...{current_api_key[-4:]} 在過去60秒內的請求計數: {current_requests_count} (RPM 上限: {global_rpm})")
 
     if current_requests_count >= global_rpm:
-        original_key_index = active_key_index
-        st.session_state.active_gemini_key_index = (active_key_index + 1) % len(api_keys_list)
-        next_api_key_candidate = api_keys_list[st.session_state.active_gemini_key_index]
-        logger.warning(f"API 金鑰 ...{current_api_key[-4:]} (索引 {original_key_index}) RPM 已達上限。嘗試切換到下一個金鑰索引 {st.session_state.active_gemini_key_index} (尾號: ...{next_api_key_candidate[-4:]})。")
+        original_key_index_in_available = active_key_index
+        # 輪換到下一個可用金鑰
+        st.session_state.active_gemini_key_index = (active_key_index + 1) % len(available_keys)
+        next_api_key_candidate = available_keys[st.session_state.active_gemini_key_index]
+        logger.warning(f"API 金鑰 ...{current_api_key[-4:]} (在可用列表中的索引 {original_key_index_in_available}) RPM 已達上限。嘗試切換到下一個可用金鑰索引 {st.session_state.active_gemini_key_index} (尾號: ...{next_api_key_candidate[-4:]})。")
         return f"錯誤：API 金鑰 ...{current_api_key[-4:]} RPM 達到上限 ({global_rpm})。已自動輪換金鑰，請重試。"
 
     try:
@@ -127,14 +139,24 @@ def call_gemini_api(
         logger.error(f"Gemini API 錯誤 (StopCandidateException) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {sce}", exc_info=True)
         return f"錯誤：內容生成因安全原因或其他限制而停止。原因: {sce}"
     except google.api_core.exceptions.PermissionDenied as e:
-        logger.error(f"Gemini API 錯誤 (PermissionDenied) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(e)}", exc_info=True)
-        return f"錯誤：呼叫 Gemini API 權限不足或 API 金鑰無效。詳細資訊: {str(e)}"
+        logger.error(f"Gemini API 錯誤 (PermissionDenied) 使用金鑰 ...{current_api_key[-4:]} (模型 {selected_model}): {str(e)}。該金鑰將被標記為暫時不可用。", exc_info=True)
+        # 確保 'temporarily_invalid_gemini_keys' 列表存在於 session_state 中
+        st.session_state.setdefault('temporarily_invalid_gemini_keys', [])
+        if current_api_key not in st.session_state.temporarily_invalid_gemini_keys:
+            st.session_state.temporarily_invalid_gemini_keys.append(current_api_key)
+            logger.info(f"金鑰 ...{current_api_key[-4:]} 已添加到暫時無效列表。")
+        # 更新 active_gemini_key_index 以便下次嘗試不同的 (如果有的話) 或相同的 (如果只有一個壞鍵)
+        st.session_state.active_gemini_key_index = (active_key_index + 1) % len(available_keys) if len(available_keys) > 0 else 0
+
+        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} 權限不足或已過期，已被標記為暫時不可用。請嘗試重新發送請求，系統將嘗試使用下一個可用金鑰。"
     except google.api_core.exceptions.InvalidArgument as e:
         logger.error(f"Gemini API 錯誤 (InvalidArgument) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(e)}", exc_info=True)
         return f"錯誤：呼叫 Gemini API 時參數無效 (例如模型名稱 '{selected_model}' 不正確或內容不當)。詳細資訊: {str(e)}"
-    except google.api_core.exceptions.ResourceExhausted as re:
-        logger.error(f"Gemini API 錯誤 (ResourceExhausted) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(re)} (可能是 RPM/TPM 超限)", exc_info=True)
-        return f"錯誤：Gemini API 資源耗盡 (例如 RPM 或 TPM 超限)。詳細資訊: {str(re)}"
+    except google.api_core.exceptions.ResourceExhausted as re: # RPM/TPM 錯誤
+        logger.error(f"Gemini API 錯誤 (ResourceExhausted) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(re)}", exc_info=True)
+        # 這種情況下，我們也應該輪換金鑰，類似於 RPM 檢查後的輪換
+        st.session_state.active_gemini_key_index = (active_key_index + 1) % len(available_keys) if len(available_keys) > 0 else 0
+        return f"錯誤：Gemini API 資源耗盡 (金鑰 ...{current_api_key[-4:]} 可能達到 RPM/TPM 上限)。已嘗試輪換金鑰，請重試。詳細資訊: {str(re)}"
     except Exception as e:
         logger.error(f"呼叫 Gemini API 時發生非預期錯誤 (金鑰 ...{current_api_key[-4:]}，模型 {selected_model}): {type(e).__name__} - {str(e)}", exc_info=True)
         return f"呼叫 Gemini API 時發生非預期錯誤: {type(e).__name__} - {str(e)}"
