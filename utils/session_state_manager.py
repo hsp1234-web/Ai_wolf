@@ -2,6 +2,11 @@
 import streamlit as st
 import logging
 from config.api_keys_config import api_keys_info
+try:
+    from google.colab import userdata
+    IS_COLAB = True
+except ImportError:
+    IS_COLAB = False
 from config.app_settings import (
     available_models,
     DEFAULT_MAIN_GEMINI_PROMPT,
@@ -25,6 +30,28 @@ def initialize_session_state():
     for key_name in api_keys_info.values():
         if key_name not in st.session_state:
             st.session_state[key_name] = ""
+
+    if IS_COLAB:
+        logger.info("在 Colab 環境中，嘗試從 userdata 加載 API 金鑰。")
+        try:
+            google_api_key_colab = userdata.get('GOOGLE_API_KEY')
+            if google_api_key_colab:
+                st.session_state[api_keys_info['Google Gemini API Key 1']] = google_api_key_colab
+                logger.info("已從 Colab userdata 加載 GOOGLE_API_KEY。")
+            else:
+                logger.info("在 Colab userdata 中未找到 GOOGLE_API_KEY。")
+
+            fred_api_key_colab = userdata.get('FRED_API_KEY')
+            if fred_api_key_colab:
+                st.session_state[api_keys_info['FRED API Key']] = fred_api_key_colab
+                logger.info("已從 Colab userdata 加載 FRED_API_KEY。")
+            else:
+                logger.info("在 Colab userdata 中未找到 FRED_API_KEY。")
+        except Exception as e:
+            logger.error(f"從 Colab userdata 加載 API 金鑰時發生錯誤: {e}")
+    else:
+        logger.info("不在 Colab 環境中或 google.colab.userdata 無法導入，跳過從 userdata 加載 API 金鑰。")
+
     logger.info("API 金鑰 session_state 初始化完畢。")
 
     # Gemini 模型設定
@@ -72,8 +99,9 @@ def initialize_session_state():
         st.session_state.gemini_api_key_usage = {key: 0 for key in api_keys_info.values()} # 跟蹤每個key的使用次數
         st.session_state.gemini_caches_list = [] # 存儲 (DisplayName, Name) 的元組列表
         st.session_state.selected_cache_for_generation = None # 用戶選擇用於生成的快取名稱
+        st.session_state.temporarily_invalid_gemini_keys = [] # 用於追蹤本會話中驗證無效的Gemini金鑰
         st.session_state.initialized_gemini_interaction_settings = True
-    logger.info("Gemini 互動設定 session_state 初始化完畢。")
+    logger.info("Gemini 互動設定 session_state 初始化完畢 (包括 temporarily_invalid_gemini_keys)。")
 
     # 主題設定
     if "initialized_theme_settings" not in st.session_state:
