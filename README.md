@@ -6,263 +6,278 @@
 
 本專案旨在打造一個在 Google Colaboratory (Colab) 環境中運行的、具有聊天式圖形化介面的人機協同智慧分析平台。平台將用於系統性地處理「善甲狼a機智生活」約150週的歷史貼文，輔助使用者回顧歷史交易機會，並最終由使用者將精煉內容手動整理至Google文件。
 
-## 如何在 Colab 中運行 (單一儲存格啟動)
+## 如何在 Colab 中運行
 
-以下步驟將指導您如何在 Google Colab 環境中，僅透過**一個整合的儲存格 (Cell)** 來完成環境設置、專案部署並運行此 Streamlit 應用程式。
+我們提供了兩種在 Google Colaboratory 中啟動 Ai_wolf (Wolf_V5) 應用程式的方法：
 
-### 前置準備
+### 方法一：使用版本化的 `run_in_colab.ipynb` Notebook (推薦)
 
-*   一個有效的 Google 帳戶。
-*   建議擁有一個 Gemini API Key 以體驗完整的 AI 分析功能。您可以從 [Google AI Studio](https://aistudio.google.com/app/apikey) 獲取。
+這是啟動應用程式的**推薦方法**，因為它使用了專案中版本化的 Notebook 檔案，確保了啟動腳本與專案程式碼的一致性。
 
-### 單一儲存格：環境設置、專案部署與應用程式啟動
+1.  **點擊下方按鈕**：
+    [![在 Colab 中打開](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/LinWolf/Gemini_Financial_Analysis_Assistant/blob/wolf_V6/run_in_colab.ipynb)
+    *(請將上述連結中的 `LinWolf/Gemini_Financial_Analysis_Assistant` 和 `wolf_V6` 替換為您的實際 GitHub 用戶名、倉庫名和目標分支名，如果不同的話。目前指向原始倉庫的 `wolf_V6` 分支。)*
 
-複製以下完整腳本內容，並將其貼到 Colab Notebook 的一個程式碼儲存格中，然後執行此儲存格。
-此整合腳本會依序完成以下所有工作：
+2.  **依照 Notebook 中的說明執行**：
+    *   `run_in_colab.ipynb` 包含詳細的步驟說明，包括如何設定 API 金鑰 (透過 Colab Secrets Manager)、Google Drive 授權等。
+    *   Notebook 中的第一個 Markdown Cell 提供了完整的操作指南。
+    *   只需執行 Notebook 中的 Code Cell 即可完成所有操作：環境清理、專案下載、依賴安裝、以及啟動 Streamlit 應用程式。
+    *   此 Notebook 設計為**「超穩健版」**，能直接捕獲並顯示 Streamlit 應用程式的所有輸出，包括啟動時的錯誤追蹤，方便快速定位問題。
 
-1.  **環境準備**:
-    *   安裝所有必要的 Python 套件 (如 `streamlit`, `google-generativeai`, `yfinance`, `pandas`, `fredapi`, `requests` 等)。
-    *   掛載您的 Google Drive。
-2.  **專案部署**:
-    *   在您的 Google Drive `My Drive` 下創建一個 `wolfAI` 目錄 (如果尚不存在)。
-    *   同時在 `wolfAI` 下創建 `logs` 子目錄，用於存放應用程式日誌。
-    *   從 GitHub (`https://github.com/hsp1234-web/Ai_wolf.git`) 克隆最新的專案程式碼到 `My Drive/wolfAI/`，如果專案已存在則嘗試更新。
-    *   檢查主應用程式檔案 `app.py` 是否成功部署。
-3.  **應用程式啟動與監控**:
-    *   在背景啟動 Streamlit 應用程式。
-    *   等待一段時間讓伺服器初始化。
-    *   嘗試獲取並顯示一個可公開訪問的 Colab 代理 URL，供您點擊以在瀏覽器中打開應用。
-    *   **持續運行**以維持 Streamlit 服務，並會**即時輸出應用程式日誌**到此儲存格的輸出區域。
-    *   您可以透過**手動中斷此儲存格 (Interrupt execution)** 來停止 Streamlit 服務。
+### 方法二：手動複製貼上單一儲存格腳本 (備用)
+
+如果您希望直接在一個新的或現有的 Colab Notebook 中快速啟動，可以複製下方的完整腳本內容，並將其貼到 Colab 的一個程式碼儲存格中執行。
+
+**請注意**：此處的腳本與 `run_in_colab.ipynb` 中的 Code Cell 內容是相同的。使用 `.ipynb` 檔案能更好地管理腳本的版本。
 
 ```python
-#@title 🚀 一鍵完成環境設置並啟動 Wolf_V5 應用程式 (點此執行)
-# === Wolf_V5 專案：環境設置、部署、啟動與日誌監控 (單一儲存格) ===
-# 執行此儲存格將完成所有必要步驟，並啟動 Streamlit 應用程式。
-# 應用程式啟動後，此儲存格會持續輸出日誌。您可以隨時手動中斷此儲存格來停止服務。
+#@title 🚀 一鍵啟動 Wolf_V5 (超穩健版，可直接顯示錯誤)
+# === Wolf_V5 專案：環境設置、部署、啟動與即時監控 (單一儲存格) ===
+# 此版本直接捕獲 Streamlit 的所有輸出，能立即顯示啟動錯誤。
 
 import os
 import subprocess
 import time
 import threading
 from IPython.display import display, HTML, clear_output
-from google.colab import drive
-from google.colab.output import eval_js
+# google.colab.drive 和 google.colab.output 只在 Colab 中可用
+try:
+    from google.colab import drive
+    from google.colab.output import eval_js
+    IN_COLAB = True
+except ImportError:
+    IN_COLAB = False
+    # 如果需要在本地模擬這些行為，可以在這裡定義 mock 函數或類別
+    print("非 Colab 環境，部分 Colab 特定功能將被模擬或跳過。")
+
 
 # --- 階段一：環境設置與專案部署 ---
 print("--- 階段一：環境設置與專案部署 ---")
-
-# 1. 安裝必要的 Python 套件
 print("\n[1/5] 正在安裝必要的 Python 套件...")
-# 確保安裝所有 app.py 中 import 的第三方庫
-!pip install streamlit google-generativeai yfinance pandas fredapi requests -q
+# 在 pip install 前面加上 !
+get_ipython().system('pip install streamlit google-generativeai yfinance pandas fredapi requests -q')
 print("✅ 套件安裝完成！")
 
-# 2. 掛載 Google Drive
-print("\n[2/5] 正在嘗試掛載 Google Drive...")
-try:
-    drive.mount('/content/drive', force_remount=True)
-    print("✅ Google Drive 掛載成功！")
-except Exception as e:
-    print(f"❌ Google Drive 掛載失敗: {e}")
-    print("   請檢查彈出視窗中的授權步驟。如果問題持續，請嘗試在 Colab 選單中選擇 '執行階段' -> '中斷並刪除執行階段'，然後重新執行此儲存格。")
-    raise SystemExit("Google Drive 掛載失敗，終止執行。")
+GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI" # Google Drive 中的專案路徑
+LOCAL_PROJECT_DIR = "/content/wolfAI" # 本地 Colab 儲存的專案路徑
+PROJECT_DIR_TO_USE = None # 實際使用的專案目錄
 
-# 3. 定義專案路徑並建立目標資料夾
-GDRIVE_PROJECT_DIR = "/content/drive/MyDrive/wolfAI"
-LOG_DIR = f"{GDRIVE_PROJECT_DIR}/logs"
-STREAMLIT_APP_PATH = f"{GDRIVE_PROJECT_DIR}/app.py"
-LOG_FILE_PATH = f"{LOG_DIR}/streamlit.log"
+if IN_COLAB:
+    print("\n[2/5] 正在嘗試掛載 Google Drive...")
+    try:
+        drive.mount('/content/drive', force_remount=True)
+        print("✅ Google Drive 掛載成功！")
+        PROJECT_DIR_TO_USE = GDRIVE_PROJECT_DIR
+    except Exception as e:
+        print(f"⚠️ Google Drive 掛載失敗: {e}")
+        print("將嘗試使用 Colab 本地儲存空間。如果重新執行，之前在 Drive 中的資料可能不會被使用。")
+        PROJECT_DIR_TO_USE = LOCAL_PROJECT_DIR
+else:
+    print("\n[2/5] 跳過 Google Drive 掛載 (非 Colab 環境)。")
+    PROJECT_DIR_TO_USE = LOCAL_PROJECT_DIR # 本地開發時使用此路徑
+
+# MyWolfData 路徑設定 (應用程式日誌會寫到這裡)
+MY_WOLF_DATA_GDRIVE_BASE = "/content/drive/MyDrive/MyWolfData"
+MY_WOLF_DATA_LOCAL_BASE = "/content/MyWolfData"
+MY_WOLF_DATA_LOG_DIR = None
+
+if PROJECT_DIR_TO_USE == GDRIVE_PROJECT_DIR: # 如果專案在 Drive，則 MyWolfData 也優先在 Drive
+    MY_WOLF_DATA_LOG_DIR = os.path.join(MY_WOLF_DATA_GDRIVE_BASE, "logs")
+else: # 否則 MyWolfData 在本地
+    MY_WOLF_DATA_LOG_DIR = os.path.join(MY_WOLF_DATA_LOCAL_BASE, "logs")
+
+print(f"\n[3/5] 設定專案路徑: {PROJECT_DIR_TO_USE}")
+print(f"    應用程式資料/日誌目錄預期在: {MY_WOLF_DATA_LOG_DIR} (由 app.py 創建)")
+
+# 強制清理舊的專案目錄
+if os.path.exists(PROJECT_DIR_TO_USE):
+    print(f"    偵測到已存在的專案目錄 '{PROJECT_DIR_TO_USE}'。執行強制清理...")
+    try:
+        # 使用 shutil.rmtree 比 !rm -rf 更安全，且是 Python 原生
+        import shutil
+        shutil.rmtree(PROJECT_DIR_TO_USE)
+        print(f"    ✅ '{PROJECT_DIR_TO_USE}' 已成功刪除。")
+    except Exception as e_rm:
+        print(f"    ❌ 刪除 '{PROJECT_DIR_TO_USE}' 時發生錯誤: {e_rm}")
+        print("       請手動檢查並刪除該資料夾，然後重新執行此儲存格。")
+        raise # 阻止後續執行
+else:
+    print(f"    '{PROJECT_DIR_TO_USE}' 不存在，無需清理。")
+
+project_parent_dir = os.path.dirname(PROJECT_DIR_TO_USE)
+if not os.path.exists(project_parent_dir) and PROJECT_DIR_TO_USE != LOCAL_PROJECT_DIR:
+     os.makedirs(project_parent_dir, exist_ok=True)
+
+my_wolf_data_base = os.path.dirname(MY_WOLF_DATA_LOG_DIR)
+if not os.path.exists(my_wolf_data_base):
+    os.makedirs(my_wolf_data_base, exist_ok=True)
+    print(f"    ✅ 已確認/建立 MyWolfData 基礎目錄: {my_wolf_data_base}")
+
+
+STREAMLIT_APP_PATH = os.path.join(PROJECT_DIR_TO_USE, "app.py")
+REQUIREMENTS_PATH = os.path.join(PROJECT_DIR_TO_USE, "requirements.txt")
 PORT = 8501
-WAIT_SECONDS_FOR_SERVER = 20
-MAX_RETRIES_FOR_URL = 3
-RETRY_DELAY_SECONDS = 7
 
-print(f"\n[3/5] 設定專案路徑與目錄...")
-print(f"   專案目錄: {GDRIVE_PROJECT_DIR}")
-!mkdir -p "{GDRIVE_PROJECT_DIR}"
-!mkdir -p "{LOG_DIR}" # 確保日誌目錄存在
-print(f"✅ 已確認/建立專案目錄及日誌目錄。")
+print(f"✅ 已確認/建立專案目錄。")
 
-# 4. 從 GitHub 克隆或更新 Ai_wolf 專案程式碼
-GIT_REPO_URL = "https://github.com/hsp1234-web/Ai_wolf.git" # 請確認這是正確的倉庫 URL
-GIT_DIR_CHECK = f"{GDRIVE_PROJECT_DIR}/.git"
+print(f"\n[4/5] 正在從 GitHub 獲取最新程式碼...")
+GIT_REPO_URL = "https://github.com/LinWolf/Gemini_Financial_Analysis_Assistant.git"
 
-print(f"\n[4/5] 正在從 {GIT_REPO_URL} 獲取最新程式碼...")
-if os.path.isdir(GIT_DIR_CHECK):
-    print("   偵測到現有的專案 Git 倉庫，嘗試更新 (git pull)...")
-    git_pull_command = f"cd '{GDRIVE_PROJECT_DIR}' && git fetch origin main && git reset --hard origin/main && git pull origin main"
-    process = subprocess.run(git_pull_command, shell=True, capture_output=True, text=True)
-    if process.returncode == 0:
-        print("✅ 專案更新成功 (git pull)！")
-        if process.stdout: print(f"   Git Pull 輸出:\n{process.stdout}")
+git_clone_command = ["git", "clone", "--depth", "1", GIT_REPO_URL, PROJECT_DIR_TO_USE]
+result = subprocess.run(git_clone_command, capture_output=True, text=True)
+if result.returncode == 0:
+    print("    ✅ 專案克隆完成！")
+else:
+    print(f"    ❌ 專案克隆失敗:")
+    print(result.stdout)
+    print(result.stderr)
+    raise SystemExit("Git clone 失敗，終止執行。")
+
+if os.path.isfile(REQUIREMENTS_PATH):
+    print("    正在從 requirements.txt 安裝依賴...")
+    pip_install_command = ["pip", "install", "-q", "-r", REQUIREMENTS_PATH]
+    result_pip = subprocess.run(pip_install_command, capture_output=True, text=True)
+    if result_pip.returncode == 0:
+        print("    ✅ 依賴安裝完成！")
     else:
-        print(f"⚠️ git pull 失敗 (返回碼: {process.returncode})。錯誤訊息如下：\n{process.stderr}")
-        print("   可能由於本地修改衝突或網路問題。建議檢查錯誤，或考慮手動刪除 Google Drive 中的 'wolfAI' 目錄後重試。")
+        print(f"    ❌ 依賴安裝失敗:")
+        print(result_pip.stdout)
+        print(result_pip.stderr)
 else:
-    print(f"   未找到現有 .git 倉庫，開始克隆專案從 {GIT_REPO_URL} 到 {GDRIVE_PROJECT_DIR} ...")
-    !git clone --depth 1 "{GIT_REPO_URL}" "{GDRIVE_PROJECT_DIR}"
-    print("✅ 專案克隆完成！")
+    print(f"    ⚠️ 警告: 未找到 requirements.txt 於 {REQUIREMENTS_PATH}。跳過依賴安裝步驟。")
 
-# 5. 檢查專案檔案
+
 print(f"\n[5/5] 檢查主要應用程式檔案...")
-if os.path.isfile(STREAMLIT_APP_PATH):
-    print(f"✅ 成功找到主要應用程式檔案: {STREAMLIT_APP_PATH}")
-else:
-    print(f"❌ 錯誤：未在 {GDRIVE_PROJECT_DIR} 中找到主要的 app.py 檔案！")
-    print(f"   請檢查 GitHub 倉庫 ({GIT_REPO_URL}) 中是否包含 app.py。")
-    raise SystemExit("主要應用程式檔案 app.py 未找到，終止執行。")
-
+if not os.path.isfile(STREAMLIT_APP_PATH):
+    raise SystemExit(f"❌ 錯誤：未在 {PROJECT_DIR_TO_USE} 中找到 app.py！")
+print(f"✅ 成功找到主要應用程式檔案: {STREAMLIT_APP_PATH}")
 print("\n--- 環境設置與專案部署階段完成 ---\n")
-print("-" * 70)
+time.sleep(2)
+if IN_COLAB: clear_output(wait=True)
 
-
-# --- 階段二：啟動 Streamlit 應用程式並監控日誌 ---
-print("--- 階段二：啟動 Streamlit 應用程式並監控日誌 ---")
-clear_output(wait=True) # 清理之前的部署日誌，準備顯示應用啟動資訊
-
-print("🚀 正在準備啟動 Streamlit 應用程式...")
-print(f"   應用程式路徑: {STREAMLIT_APP_PATH}")
-print(f"   日誌檔案路徑: {LOG_FILE_PATH}")
-print(f"   預計監聽端口: {PORT}")
-print(f"   將等待 {WAIT_SECONDS_FOR_SERVER} 秒讓伺服器完成初始化...")
-print("-" * 70)
-
-with open(LOG_FILE_PATH, 'a') as f: # 確保日誌檔案存在並寫入分隔符
-    f.write(f"\n--- Colab 腳本重新啟動/開始監控於 {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-print(f"日誌檔案 {LOG_FILE_PATH} 已確認/創建。")
-print("-" * 70)
-
+# --- 階段二：啟動 Streamlit 並直接監控其輸出 ---
+print("--- 階段二：啟動 Streamlit 並直接監控其輸出 ---")
 streamlit_process = None
 monitor_thread = None
+tunnel_url = None
 
 try:
-    print(f"⏳ 正在於背景啟動 Streamlit...")
-    cmd = ["streamlit", "run", STREAMLIT_APP_PATH, "--server.port", str(PORT), "--server.headless", "true", "--browser.gatherUsageStats", "false"]
-    streamlit_process = subprocess.Popen(cmd) # 允許 Streamlit CLI 的輸出直接顯示
-    print(f"   Streamlit 啟動指令已送出 (PID: {streamlit_process.pid if streamlit_process else '未知'})。")
-    print(f"   將等待 {WAIT_SECONDS_FOR_SERVER} 秒讓伺服器初始化，然後嘗試獲取連結...")
-    time.sleep(WAIT_SECONDS_FOR_SERVER)
+    import sys
+    cmd_streamlit = [sys.executable, "-m", "streamlit", "run", STREAMLIT_APP_PATH, "--server.port", str(PORT), "--server.headless", "true", "--server.enableCORS", "false", "--server.enableXsrfProtection", "false"]
 
-    if streamlit_process.poll() is not None:
-        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ Streamlit 未能成功啟動或已意外終止 (返回碼: {streamlit_process.returncode})。</p>" \
-                        f"<p style='color:orange;'>   請檢查 Colab 的「執行階段」->「檢視執行階段記錄檔」或日誌檔案 `{LOG_FILE_PATH}` (如果 Streamlit 已開始寫入) 以獲取更多線索。</p>"))
-        raise SystemExit(f"Streamlit 進程未能持續運行。")
+    streamlit_process = subprocess.Popen(cmd_streamlit, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', cwd=PROJECT_DIR_TO_USE)
+    print("✅ Streamlit 啟動指令已送出。")
+    print("⏳ 等待伺服器初始化並嘗試獲取連結...")
 
-    print("✅ Streamlit 伺服器應已在背景運行。")
-    print("-" * 70)
-
-    print("🔗 現在嘗試獲取 Colab 代理訪問網址...")
-    proxy_url = None
-    for attempt in range(MAX_RETRIES_FOR_URL):
-        print(f"   嘗試第 {attempt + 1}/{MAX_RETRIES_FOR_URL} 次...")
-        try:
-            proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
-            if proxy_url:
-                print(f"   🎉 成功獲取到代理 URL！")
+    def stream_watcher(identifier, stream):
+        for line in iter(stream.readline, ''):
+            if not line:
                 break
-        except Exception as e_evaljs:
-            print(f"      獲取 URL 第 {attempt + 1} 次失敗 (可能服務尚未完全就緒): {str(e_evaljs)[:100]}...")
-        if attempt < MAX_RETRIES_FOR_URL - 1:
-            time.sleep(RETRY_DELAY_SECONDS)
-    print("-" * 70)
+            print(f"[{identifier}] {line}", end='', flush=True)
+        stream.close()
 
-    if proxy_url:
-        clear_output(wait=True)
+    monitor_thread = threading.Thread(target=stream_watcher, args=('Streamlit', streamlit_process.stdout))
+    monitor_thread.daemon = True
+    monitor_thread.start()
+
+    if IN_COLAB:
+        print("    嘗試使用 google.colab.kernel.proxyPort 獲取 Colab 代理 URL...")
+        time.sleep(15)
+        proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
+        if proxy_url:
+            tunnel_url = proxy_url
+            print(f"    ✅ 成功獲取 Colab 代理 URL: {tunnel_url}")
+        else:
+            print("    ⚠️ 未能透過 eval_js 獲取 Colab 代理 URL。將嘗試 cloudflared 作為備選。")
+
+    if not tunnel_url:
+        print("    正在設定 cloudflared 隧道...")
+        try:
+            subprocess.run(["cloudflared", "--version"], check=True, capture_output=True)
+            print("    cloudflared 已安裝。")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("    cloudflared 未安裝或未在 PATH 中。正在嘗試安裝...")
+            npm_install_cmd = ["npm", "install", "-g", "cloudflared"]
+            npm_result = subprocess.run(npm_install_cmd, capture_output=True, text=True)
+            if npm_result.returncode == 0:
+                print("    ✅ cloudflared 安裝成功 (透過 npm)。")
+            else:
+                print(f"    ❌ cloudflared (npm) 安裝失敗: {npm_result.stderr}")
+                raise SystemExit("Cloudflared 安裝失敗。")
+
+        cloudflared_process = subprocess.Popen(
+            ['cloudflared', 'tunnel', '--url', f'http://localhost:{PORT}'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8'
+        )
+
+        def get_tunnel_url_from_stderr(stderr_stream): # Renamed to avoid conflict
+            nonlocal tunnel_url # Closure to modify the outer scope tunnel_url
+            for line in iter(stderr_stream.readline, ''):
+                print(f"[Cloudflared] {line}", end='', flush=True)
+                if ".trycloudflare.com" in line:
+                    extracted_url = line[line.find("https://"):].split(" ")[0]
+                    tunnel_url = extracted_url
+                    print(f"    ✅ 成功獲取 Cloudflared 隧道 URL: {tunnel_url}")
+                    break
+            stderr_stream.close()
+
+        tunnel_thread = threading.Thread(target=get_tunnel_url_from_stderr, args=(cloudflared_process.stderr,))
+        tunnel_thread.daemon = True
+        tunnel_thread.start()
+
+        timeout_seconds = 30
+        start_time = time.time()
+        while not tunnel_url and (time.time() - start_time) < timeout_seconds:
+            time.sleep(1)
+        if not tunnel_url:
+             print("    ❌ Cloudflared 隧道 URL 在超時前未能獲取。請檢查 Cloudflared 日誌。")
+
+    if IN_COLAB: clear_output(wait=True)
+
+    if tunnel_url:
         display(HTML(f"""
-            <div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #e8f5e9;'>
-                <h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 應用程式已成功啟動！</h2>
-                <p style='font-size:1.1em;'>您的 Wolf_V5 分析平台可以透過下面的連結訪問：</p>
-                <p style='margin: 25px 0;'>
-                    <a href='{proxy_url}' target='_blank'
-                       style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:8px; font-size:1.2em; font-weight: 600; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); display:inline-block;'>
-                       🚀 點此開啟 Wolf_V5 應用程式
-                    </a>
-                </p>
-                <p style='font-size:0.9em; color:gray;'>連結地址: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>
-                <p style='font-size:0.9em; color:gray; margin-top:15px;'>如果點擊後應用程式未載入，請確保此 Colab Notebook 儲存格仍在運行。</p>
-                <p style='font-size:0.9em; color:orange; margin-top:10px;'>
-                   <b>注意：此儲存格將持續運行以顯示應用程式日誌。要停止服務，請手動中斷此儲存格的執行。</b>
-                </p>
+            <div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px;'>
+                <h2 style='color: #2E7D32;'>🎉 應用程式已成功啟動！</h2>
+                <p>日誌和錯誤將直接顯示在本儲存格的下方。</p>
+                <p><a href='{tunnel_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:8px;'>
+                   🚀 點此開啟 Wolf_V5 應用程式
+                </a></p>
+                <p style='font-size:0.8em; color:grey;'>如果無法訪問，請檢查下方 Streamlit 和 Cloudflared (如果使用) 的輸出日誌。</p>
             </div>
         """))
-
-        print("\n--- 應用程式日誌 (每 10 秒刷新一次) ---")
-        print(f"日誌來源檔案: {LOG_FILE_PATH}")
-        print("您可以隨時手動中斷此儲存格 (點擊 Colab 中此儲存格左側的停止按鈕或使用快捷鍵 `Ctrl+M I`) 來停止服務。")
-        print("-" * 70, flush=True)
-
-        def monitor_streamlit_process():
-            streamlit_process.wait()
-            if streamlit_process.returncode is not None:
-                print(f"\n🔴 Streamlit 服務已停止 (返回碼: {streamlit_process.returncode})。日誌監控將終止。", flush=True)
-
-        monitor_thread = threading.Thread(target=monitor_streamlit_process)
-        monitor_thread.daemon = True
-        monitor_thread.start()
-
-        last_pos = 0
-        log_read_attempt = 0 # 用於控制 FileNotFoundError 的提示頻率
-        try:
-            while monitor_thread.is_alive():
-                try:
-                    with open(LOG_FILE_PATH, 'r', encoding='utf-8') as f:
-                        f.seek(last_pos)
-                        new_logs = f.read()
-                        if new_logs:
-                            print(new_logs, end='', flush=True)
-                            last_pos = f.tell()
-                    log_read_attempt = 0 # 成功讀取後重置嘗試次數
-                except FileNotFoundError:
-                    log_read_attempt +=1
-                    if log_read_attempt <= 5: # 最多提示5次（約50秒）
-                         print(f"提示：日誌檔案 {LOG_FILE_PATH} 暫未找到，可能是應用程式仍在初始化。等待中 ({log_read_attempt}/5)...", flush=True)
-                    elif log_read_attempt % 6 == 0 : # 每分鐘提醒一次 (近似)
-                         print(f"提醒：日誌檔案 {LOG_FILE_PATH} 仍未找到。請確認應用程式是否正常運行並配置了日誌輸出。", flush=True)
-                except Exception as e:
-                    print(f"讀取日誌時發生錯誤: {e}", flush=True)
-
-                if streamlit_process.poll() is not None:
-                    break
-                time.sleep(10)
-            print("\n--- 日誌監控循環結束 (Streamlit 服務可能已停止) ---", flush=True)
-        except KeyboardInterrupt:
-            print("\n⌨️ 偵測到手動中斷 (KeyboardInterrupt)。", flush=True)
-        finally:
-            print("\n--- 正在終止 Streamlit 服務 ---", flush=True)
-            if streamlit_process and streamlit_process.poll() is None:
-                streamlit_process.terminate()
-                try:
-                    streamlit_process.wait(timeout=10)
-                    print("✅ Streamlit 服務已成功終止。", flush=True)
-                except subprocess.TimeoutExpired:
-                    print("⚠️ Streamlit 服務終止超時，嘗試強制終止...", flush=True)
-                    streamlit_process.kill()
-                    streamlit_process.wait()
-                    print("強制終止 Streamlit 服務。", flush=True)
-            else:
-                print("ℹ️ Streamlit 服務已經停止或未成功啟動。", flush=True)
-
-            if monitor_thread and monitor_thread.is_alive():
-                print("等待日誌監控線程結束...", flush=True)
-                monitor_thread.join(timeout=2)
-                if monitor_thread.is_alive():
-                    print("監控線程未能及時結束。", flush=True)
-            print("--- 應用程式啟動與監控腳本執行完畢 ---", flush=True)
     else:
-        clear_output(wait=True)
-        error_html_message = (
-            f"<p style='color:red; font-weight:bold;'>❌ 未能獲取 Colab 代理網址。</p>"
-            f"<p>請檢查 Streamlit 應用程式是否仍在運行，以及端口 {PORT} 是否被正確代理。</p>"
-            f"<p>您可以嘗試查看 Colab 的「執行階段」->「檢視執行階段記錄檔」以獲取 Streamlit 的直接輸出，其中可能包含 'External URL'。</p>"
-        )
-        display(HTML(error_html_message))
-        print("\n❌ 未能啟動應用程式或獲取連結。請檢查輸出。")
+        display(HTML("<p style='color:red;'>❌ 未能獲取應用程式的公開訪問 URL。請檢查上方的日誌輸出以了解詳細原因。</p>"))
 
+    print("\n--- 應用程式即時輸出 (包含日誌與錯誤) ---")
+    monitor_thread.join()
+
+except KeyboardInterrupt:
+    print("\n\n⌨️ 偵測到手動中斷。")
+except Exception as e:
+    print(f"\n\n❌ 腳本執行期間發生錯誤: {e}")
+    import traceback
+    traceback.print_exc()
+finally:
+    print("\n\n--- 正在終止 Streamlit 服務 ---")
+    if streamlit_process and streamlit_process.poll() is None:
+        streamlit_process.terminate()
+        try:
+            streamlit_process.wait(timeout=10)
+            print("    Streamlit 程序已終止。")
+        except subprocess.TimeoutExpired:
+            print("    Streamlit 程序未能優雅終止，強制結束。")
+            streamlit_process.kill()
+    if monitor_thread and monitor_thread.is_alive(): # Ensure monitor_thread is defined
+        monitor_thread.join(timeout=5)
+    print("--- 腳本執行完畢 ---")
 ```
+
 **執行說明：**
-*   複製此單一儲存格的全部內容到您的 Colab Notebook 中。
-*   執行此儲存格。它會先完成環境設置和專案部署，然後自動啟動 Streamlit 應用程式。
+*   上述腳本會先完成環境設置和專案部署，然後自動啟動 Streamlit 應用程式。
+*   成功啟動後，會顯示一個**綠色的「點此開啟 Wolf_V5 應用程式」按鈕**。
 *   成功啟動後，會顯示一個**綠色背景的「點此開啟 Wolf_V5 應用程式」大按鈕**。
 *   儲存格的輸出區域將持續顯示應用程式的即時日誌。
 *   要停止 Streamlit 服務，請**手動中斷此儲存格的執行** (例如，點擊儲存格左側的停止按鈕，或使用快捷鍵 `Ctrl+M I`)。
