@@ -17,9 +17,10 @@ from components.log_display import render_log_viewer
 # --- 定義日誌檔案路徑 ---
 IN_COLAB = 'google.colab' in sys.modules
 if IN_COLAB:
-    BASE_DATA_DIR = "/content/drive/MyDrive/MyWolfData"
+    BASE_DATA_DIR = "/content/drive/MyDrive/Wolf_Data" # Changed from MyWolfData
 else:
-    BASE_DATA_DIR = os.path.join(os.path.expanduser("~"), "MyWolfData")
+    # For local non-Colab, also changed to Wolf_Data for consistency
+    BASE_DATA_DIR = os.path.join(os.path.expanduser("~"), "Wolf_Data") # Changed from MyWolfData
 
 APP_LOG_DIR = os.path.join(BASE_DATA_DIR, "logs")
 APP_LOG_FILE_PATH = os.path.join(APP_LOG_DIR, "streamlit.log")

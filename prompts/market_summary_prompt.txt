@@ -1,0 +1,6 @@
+This is a placeholder for the Market Summary prompt.
+It should guide Gemini to provide a concise summary of the current market situation based on provided data.
+Focus on:
+- Overall market trend
+- Key performing assets
+- Potential risks

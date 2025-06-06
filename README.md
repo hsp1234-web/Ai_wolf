@@ -31,30 +31,35 @@
 **請注意**：此處的腳本與 `run_in_colab.ipynb` 中的 Code Cell 內容是相同的。使用 `.ipynb` 檔案能更好地管理腳本的版本。
 
 ```python
-#@title 🚀 一鍵啟動 Wolf_V5 (超穩健版，可直接顯示錯誤)
+#@title 🚀 一鍵啟動 Wolf_V5 (修正版)
 # === Wolf_V5 專案：環境設置、部署、啟動與即時監控 (單一儲存格) ===
-# 此版本直接捕獲 Streamlit 的所有輸出，能立即顯示啟動錯誤。
+# 此版本已修正公開儲存庫的 git clone 問題，並整合了日誌路徑。
 
 import os
 import subprocess
 import time
 import threading
 from IPython.display import display, HTML, clear_output
-# google.colab.drive 和 google.colab.output 只在 Colab 中可用
+
+# 檢查是否在 Colab 環境
 try:
     from google.colab import drive
     from google.colab.output import eval_js
     IN_COLAB = True
 except ImportError:
     IN_COLAB = False
-    # 如果需要在本地模擬這些行為，可以在這裡定義 mock 函數或類別
+    # 如果需要在本地模擬，定義 mock 函數
+    def mock_drive_mount(path, force_remount=False): print(f"Mock: Drive mount requested for {path}")
+    drive = type('Drive', (object,), {'mount': mock_drive_mount})()
+    def mock_eval_js(code): print(f"Mock: eval_js called with {code}"); return "http://localhost:8501"
+    eval_js = mock_eval_js
     print("非 Colab 環境，部分 Colab 特定功能將被模擬或跳過。")
 
 
 # --- 階段一：環境設置與專案部署 ---
 print("--- 階段一：環境設置與專案部署 ---")
 print("\n[1/5] 正在安裝必要的 Python 套件...")
-# 在 pip install 前面加上 !
+# 使用 get_ipython() 來執行 shell 命令
 get_ipython().system('pip install streamlit google-generativeai yfinance pandas fredapi requests -q')
 print("✅ 套件安裝完成！")
 
@@ -68,39 +73,56 @@ if IN_COLAB:
         drive.mount('/content/drive', force_remount=True)
         print("✅ Google Drive 掛載成功！")
         PROJECT_DIR_TO_USE = GDRIVE_PROJECT_DIR
+
+        # --- 當 Drive 掛載成功時，創建 Wolf_Data 目錄結構 ---
+        WOLF_DATA_BASE_GDRIVE = "/content/drive/MyDrive/Wolf_Data"
+        print(f"    檢查/創建 Wolf_Data 基礎目錄: {WOLF_DATA_BASE_GDRIVE}")
+        if not os.path.exists(WOLF_DATA_BASE_GDRIVE):
+            os.makedirs(WOLF_DATA_BASE_GDRIVE, exist_ok=True)
+            print(f"    ✅ '{WOLF_DATA_BASE_GDRIVE}' 已創建。")
+        else:
+            print(f"    ➡️ '{WOLF_DATA_BASE_GDRIVE}' 已存在。")
+
+        sub_dirs_to_create = ["source_documents/masters", "source_documents/shan_jia_lang", "weekly_reports", "logs"]
+        for sub_dir in sub_dirs_to_create:
+            full_sub_dir_path = os.path.join(WOLF_DATA_BASE_GDRIVE, sub_dir)
+            print(f"    檢查/創建子目錄: {full_sub_dir_path}")
+            if not os.path.exists(full_sub_dir_path):
+                os.makedirs(full_sub_dir_path, exist_ok=True)
+                print(f"    ✅ '{full_sub_dir_path}' 已創建。")
+            else:
+                print(f"    ➡️ '{full_sub_dir_path}' 已存在。")
+
     except Exception as e:
         print(f"⚠️ Google Drive 掛載失敗: {e}")
-        print("將嘗試使用 Colab 本地儲存空間。如果重新執行，之前在 Drive 中的資料可能不會被使用。")
+        print("將嘗試使用 Colab 本地儲存空間。")
         PROJECT_DIR_TO_USE = LOCAL_PROJECT_DIR
 else:
     print("\n[2/5] 跳過 Google Drive 掛載 (非 Colab 環境)。")
-    PROJECT_DIR_TO_USE = LOCAL_PROJECT_DIR # 本地開發時使用此路徑
+    PROJECT_DIR_TO_USE = LOCAL_PROJECT_DIR
 
-# MyWolfData 路徑設定 (應用程式日誌會寫到這裡)
-MY_WOLF_DATA_GDRIVE_BASE = "/content/drive/MyDrive/MyWolfData"
-MY_WOLF_DATA_LOCAL_BASE = "/content/MyWolfData"
-MY_WOLF_DATA_LOG_DIR = None
+# 設定應用程式預期的日誌目錄路徑
+WOLF_DATA_GDRIVE_BASE_INFO = "/content/drive/MyDrive/Wolf_Data"
+WOLF_DATA_LOCAL_BASE_INFO = "/content/Wolf_Data"
+APP_EXPECTED_LOG_DIR = None
 
-if PROJECT_DIR_TO_USE == GDRIVE_PROJECT_DIR: # 如果專案在 Drive，則 MyWolfData 也優先在 Drive
-    MY_WOLF_DATA_LOG_DIR = os.path.join(MY_WOLF_DATA_GDRIVE_BASE, "logs")
-else: # 否則 MyWolfData 在本地
-    MY_WOLF_DATA_LOG_DIR = os.path.join(MY_WOLF_DATA_LOCAL_BASE, "logs")
+if PROJECT_DIR_TO_USE == GDRIVE_PROJECT_DIR:
+    APP_EXPECTED_LOG_DIR = os.path.join(WOLF_DATA_GDRIVE_BASE_INFO, "logs")
+else:
+    APP_EXPECTED_LOG_DIR = os.path.join(WOLF_DATA_LOCAL_BASE_INFO, "logs")
+    if not os.path.exists(WOLF_DATA_LOCAL_BASE_INFO):
+        os.makedirs(WOLF_DATA_LOCAL_BASE_INFO, exist_ok=True)
+        print(f"    ✅ 已確認/建立模擬的本地 Wolf_Data 基礎目錄: {WOLF_DATA_LOCAL_BASE_INFO}")
 
 print(f"\n[3/5] 設定專案路徑: {PROJECT_DIR_TO_USE}")
-print(f"    應用程式資料/日誌目錄預期在: {MY_WOLF_DATA_LOG_DIR} (由 app.py 創建)")
+print(f"    應用程式資料/日誌目錄預期在: {APP_EXPECTED_LOG_DIR} (實際路徑由 app.py 設定)")
 
 # 強制清理舊的專案目錄
 if os.path.exists(PROJECT_DIR_TO_USE):
     print(f"    偵測到已存在的專案目錄 '{PROJECT_DIR_TO_USE}'。執行強制清理...")
-    try:
-        # 使用 shutil.rmtree 比 !rm -rf 更安全，且是 Python 原生
-        import shutil
-        shutil.rmtree(PROJECT_DIR_TO_USE)
-        print(f"    ✅ '{PROJECT_DIR_TO_USE}' 已成功刪除。")
-    except Exception as e_rm:
-        print(f"    ❌ 刪除 '{PROJECT_DIR_TO_USE}' 時發生錯誤: {e_rm}")
-        print("       請手動檢查並刪除該資料夾，然後重新執行此儲存格。")
-        raise # 阻止後續執行
+    import shutil
+    shutil.rmtree(PROJECT_DIR_TO_USE)
+    print(f"    ✅ '{PROJECT_DIR_TO_USE}' 已成功刪除。")
 else:
     print(f"    '{PROJECT_DIR_TO_USE}' 不存在，無需清理。")
 
@@ -108,23 +130,25 @@ project_parent_dir = os.path.dirname(PROJECT_DIR_TO_USE)
 if not os.path.exists(project_parent_dir) and PROJECT_DIR_TO_USE != LOCAL_PROJECT_DIR:
      os.makedirs(project_parent_dir, exist_ok=True)
 
-my_wolf_data_base = os.path.dirname(MY_WOLF_DATA_LOG_DIR)
-if not os.path.exists(my_wolf_data_base):
-    os.makedirs(my_wolf_data_base, exist_ok=True)
-    print(f"    ✅ 已確認/建立 MyWolfData 基礎目錄: {my_wolf_data_base}")
-
-
 STREAMLIT_APP_PATH = os.path.join(PROJECT_DIR_TO_USE, "app.py")
 REQUIREMENTS_PATH = os.path.join(PROJECT_DIR_TO_USE, "requirements.txt")
 PORT = 8501
 
 print(f"✅ 已確認/建立專案目錄。")
 
+# --- [已修正] 從 GitHub 獲取程式碼 ---
 print(f"\n[4/5] 正在從 GitHub 獲取最新程式碼...")
-GIT_REPO_URL = "https://github.com/LinWolf/Gemini_Financial_Analysis_Assistant.git"
+GIT_REPO_URL = "https://github.com/hsp1234-web/Ai_wolf.git"
 
 git_clone_command = ["git", "clone", "--depth", "1", GIT_REPO_URL, PROJECT_DIR_TO_USE]
-result = subprocess.run(git_clone_command, capture_output=True, text=True)
+
+# 建立一個新的環境變數，告訴 Git 不要進行互動式提問
+git_env = os.environ.copy()
+git_env["GIT_TERMINAL_PROMPT"] = "0"
+
+# 使用新的環境變數來執行 git clone
+result = subprocess.run(git_clone_command, capture_output=True, text=True, env=git_env)
+
 if result.returncode == 0:
     print("    ✅ 專案克隆完成！")
 else:
@@ -133,6 +157,7 @@ else:
     print(result.stderr)
     raise SystemExit("Git clone 失敗，終止執行。")
 
+# 使用 requirements.txt 安裝依賴
 if os.path.isfile(REQUIREMENTS_PATH):
     print("    正在從 requirements.txt 安裝依賴...")
     pip_install_command = ["pip", "install", "-q", "-r", REQUIREMENTS_PATH]
@@ -144,7 +169,7 @@ if os.path.isfile(REQUIREMENTS_PATH):
         print(result_pip.stdout)
         print(result_pip.stderr)
 else:
-    print(f"    ⚠️ 警告: 未找到 requirements.txt 於 {REQUIREMENTS_PATH}。跳過依賴安裝步驟。")
+    print(f"    ⚠️ 警告: 未找到 requirements.txt。")
 
 
 print(f"\n[5/5] 檢查主要應用程式檔案...")
@@ -165,6 +190,7 @@ try:
     import sys
     cmd_streamlit = [sys.executable, "-m", "streamlit", "run", STREAMLIT_APP_PATH, "--server.port", str(PORT), "--server.headless", "true", "--server.enableCORS", "false", "--server.enableXsrfProtection", "false"]
 
+    # 將 stderr 重定向到 stdout，以便捕獲所有輸出，包括錯誤
     streamlit_process = subprocess.Popen(cmd_streamlit, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', cwd=PROJECT_DIR_TO_USE)
     print("✅ Streamlit 啟動指令已送出。")
     print("⏳ 等待伺服器初始化並嘗試獲取連結...")
@@ -177,63 +203,38 @@ try:
         stream.close()
 
     monitor_thread = threading.Thread(target=stream_watcher, args=('Streamlit', streamlit_process.stdout))
-    monitor_thread.daemon = True
+    monitor_thread.daemon = True # 設置為守護線程
     monitor_thread.start()
 
     if IN_COLAB:
-        print("    嘗試使用 google.colab.kernel.proxyPort 獲取 Colab 代理 URL...")
-        time.sleep(15)
-        proxy_url = eval_js(f'google.colab.kernel.proxyPort({PORT})')
-        if proxy_url:
-            tunnel_url = proxy_url
-            print(f"    ✅ 成功獲取 Colab 代理 URL: {tunnel_url}")
-        else:
-            print("    ⚠️ 未能透過 eval_js 獲取 Colab 代理 URL。將嘗試 cloudflared 作為備選。")
-
-    if not tunnel_url:
-        print("    正在設定 cloudflared 隧道...")
+        print("\n✅ 伺服器已在背景啟動。")
+        print("   請等待約 15-30 秒讓服務完成初始化...")
         try:
-            subprocess.run(["cloudflared", "--version"], check=True, capture_output=True)
-            print("    cloudflared 已安裝。")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            print("    cloudflared 未安裝或未在 PATH 中。正在嘗試安裝...")
-            npm_install_cmd = ["npm", "install", "-g", "cloudflared"]
-            npm_result = subprocess.run(npm_install_cmd, capture_output=True, text=True)
-            if npm_result.returncode == 0:
-                print("    ✅ cloudflared 安裝成功 (透過 npm)。")
-            else:
-                print(f"    ❌ cloudflared (npm) 安裝失敗: {npm_result.stderr}")
-                raise SystemExit("Cloudflared 安裝失敗。")
+            input("   初始化完成後，請按 Enter 鍵嘗試獲取應用程式網址...")
+        except Exception:
+            print("\n⚠️ 讀取用戶輸入時發生錯誤。將繼續嘗試獲取URL。")
 
-        cloudflared_process = subprocess.Popen(
-            ['cloudflared', 'tunnel', '--url', f'http://localhost:{PORT}'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8'
-        )
-
-        def get_tunnel_url_from_stderr(stderr_stream): # Renamed to avoid conflict
-            nonlocal tunnel_url # Closure to modify the outer scope tunnel_url
-            for line in iter(stderr_stream.readline, ''):
-                print(f"[Cloudflared] {line}", end='', flush=True)
-                if ".trycloudflare.com" in line:
-                    extracted_url = line[line.find("https://"):].split(" ")[0]
-                    tunnel_url = extracted_url
-                    print(f"    ✅ 成功獲取 Cloudflared 隧道 URL: {tunnel_url}")
+        # 帶有重試機制的 URL 獲取
+        print("\n🔗 開始嘗試獲取應用程式網址...")
+        MAX_RETRIES = 5
+        RETRY_DELAY_SECONDS = 5
+        for attempt in range(MAX_RETRIES):
+            print(f"   第 {attempt + 1}/{MAX_RETRIES} 次嘗試...")
+            try:
+                proxy_url_eval = eval_js(f'google.colab.kernel.proxyPort({PORT})', timeout_sec=10)
+                if proxy_url_eval:
+                    tunnel_url = proxy_url_eval
+                    print(f"   🎉 成功獲取 Colab 代理 URL: {tunnel_url}")
                     break
-            stderr_stream.close()
-
-        tunnel_thread = threading.Thread(target=get_tunnel_url_from_stderr, args=(cloudflared_process.stderr,))
-        tunnel_thread.daemon = True
-        tunnel_thread.start()
-
-        timeout_seconds = 30
-        start_time = time.time()
-        while not tunnel_url and (time.time() - start_time) < timeout_seconds:
-            time.sleep(1)
-        if not tunnel_url:
-             print("    ❌ Cloudflared 隧道 URL 在超時前未能獲取。請檢查 Cloudflared 日誌。")
+                else:
+                    print(f"   ⚠️ 第 {attempt + 1} 次嘗試：eval_js 未返回有效 URL。")
+            except Exception as e:
+                print(f"   ⚠️ 第 {attempt + 1} 次嘗試獲取 URL 時發生錯誤: {e}")
+            if attempt < MAX_RETRIES - 1:
+                print(f"   將在 {RETRY_DELAY_SECONDS} 秒後重試...")
+                time.sleep(RETRY_DELAY_SECONDS)
+            else:
+                print(f"   ❌ 達到最大重試次數，仍未能透過 eval_js 獲取網址。")
 
     if IN_COLAB: clear_output(wait=True)
 
@@ -245,7 +246,7 @@ try:
                 <p><a href='{tunnel_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:8px;'>
                    🚀 點此開啟 Wolf_V5 應用程式
                 </a></p>
-                <p style='font-size:0.8em; color:grey;'>如果無法訪問，請檢查下方 Streamlit 和 Cloudflared (如果使用) 的輸出日誌。</p>
+                <p style='font-size:0.8em; color:grey;'>如果無法訪問，請檢查下方 Streamlit 輸出日誌。</p>
             </div>
         """))
     else:
@@ -270,7 +271,7 @@ finally:
         except subprocess.TimeoutExpired:
             print("    Streamlit 程序未能優雅終止，強制結束。")
             streamlit_process.kill()
-    if monitor_thread and monitor_thread.is_alive(): # Ensure monitor_thread is defined
+    if monitor_thread and monitor_thread.is_alive():
         monitor_thread.join(timeout=5)
     print("--- 腳本執行完畢 ---")
 ```

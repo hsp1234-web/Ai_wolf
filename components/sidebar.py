@@ -1,6 +1,7 @@
 # components/sidebar.py
 import streamlit as st
 import logging
+import os
 from config.api_keys_config import api_keys_info
 from config.app_settings import available_models
 from services.gemini_service import (
@@ -158,6 +159,58 @@ def render_sidebar():
     if new_prompt_text_area != old_prompt:
         st.session_state.main_gemini_prompt = new_prompt_text_area
         logger.info(f"側邊欄：主要 Gemini 提示詞已通過文本區域更新。新提示詞長度: {len(new_prompt_text_area)}")
+
+    # --- 快捷提示詞載入 ---
+    st.sidebar.header("🚀 快捷提示詞載入")
+    st.sidebar.caption("從 'prompts' 文件夾快速載入預設提示詞模板。")
+    PROMPTS_DIR = "prompts"
+    prompt_files = []
+    try:
+        if os.path.exists(PROMPTS_DIR) and os.path.isdir(PROMPTS_DIR):
+            prompt_files = [f for f in os.listdir(PROMPTS_DIR) if f.endswith(".txt")]
+        else:
+            logger.warning(f"側邊欄：快捷提示詞目錄 '{PROMPTS_DIR}' 不存在。")
+    except Exception as e:
+        logger.error(f"側邊欄：讀取快捷提示詞目錄 '{PROMPTS_DIR}' 時出錯: {e}")
+        st.sidebar.error(f"讀取提示詞目錄失敗: {e}")
+
+    if not prompt_files:
+        st.sidebar.info(f"在 '{PROMPTS_DIR}' 目錄下未找到 .txt 格式的提示詞模板。")
+    else:
+        # 初始化 selected_prompt_template (如果尚未在 session_state_manager 中處理)
+        if "selected_prompt_template" not in st.session_state:
+            st.session_state.selected_prompt_template = prompt_files[0] if prompt_files else None
+
+        selected_template = st.sidebar.selectbox(
+            "選擇提示詞範本:",
+            options=prompt_files,
+            index=prompt_files.index(st.session_state.selected_prompt_template) if st.session_state.selected_prompt_template in prompt_files else 0,
+            key="sidebar_selected_prompt_template_selector"
+        )
+        st.session_state.selected_prompt_template = selected_template # 更新選擇
+
+        if st.sidebar.button("載入選定提示詞", key="sidebar_load_selected_prompt_button"):
+            if st.session_state.selected_prompt_template:
+                file_path = os.path.join(PROMPTS_DIR, st.session_state.selected_prompt_template)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    st.session_state.main_gemini_prompt = content
+                    logger.info(f"側邊欄：已從 '{file_path}' 載入提示詞到主要提示詞區域。")
+                    st.sidebar.success(f"提示詞 '{st.session_state.selected_prompt_template}' 已載入！")
+                    # 由於 main_gemini_prompt 的 text_area widget 的 value 綁定到 session_state,
+                    # Streamlit 會自動更新 text_area。如果沒有更新，才考慮 st.rerun()。
+                except FileNotFoundError:
+                    logger.error(f"側邊欄：嘗試載入提示詞失敗，文件未找到: {file_path}")
+                    st.sidebar.error(f"錯誤：文件 '{st.session_state.selected_prompt_template}' 未找到。")
+                except Exception as e:
+                    logger.error(f"側邊欄：讀取提示詞文件 '{file_path}' 時出錯: {e}")
+                    st.sidebar.error(f"讀取文件失敗: {e}")
+            else:
+                logger.warning("側邊欄：用戶點擊載入提示詞，但未選擇任何模板。")
+                st.sidebar.warning("請先選擇一個提示詞模板。")
+    st.sidebar.markdown("---")
+
 
     # --- 快取管理 ---
     st.sidebar.header("🧹 數據快取管理")
