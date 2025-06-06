@@ -2,10 +2,83 @@
 import streamlit as st
 import logging
 import pandas as pd # For constructing prompt parts with DataFrame summaries
+import os # Needed for os.path.basename
+import re # For finding python-plot blocks
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
+import numpy as np # For exec context
 from services.gemini_service import call_gemini_api
 from config.api_keys_config import api_keys_info # To get Gemini key names
 
 logger = logging.getLogger(__name__)
+
+# Helper function to process and display model responses that might contain plots
+def process_and_display_model_response_with_plots(response_text: str):
+    """
+    Processes the model's response text, displaying markdown for text parts
+    and attempting to execute and render python-plot code blocks.
+    """
+    logger.debug(f"Processing model response for plot display. Response length: {len(response_text)}")
+    # Pattern to find ```python-plot ... ``` blocks
+    pattern = re.compile(r"```python-plot\n(.*?)\n```", re.DOTALL)
+    parts = pattern.split(response_text)
+
+    # Globals dict for exec, pre-populate with common libraries
+    execution_globals = {
+        'plt': plt,
+        'go': go,
+        'px': px,
+        'pd': pd,
+        'np': np,
+        # 'st': st # Optionally, provide st if Gemini might generate st.write etc. For plots, usually not needed.
+    }
+
+    for i, part_content in enumerate(parts): # Renamed 'part' to 'part_content' to avoid conflict with pd.DataFrame.part
+        if i % 2 == 0: # This is a text part
+            if part_content.strip(): # Avoid rendering empty markdown parts
+                st.markdown(part_content)
+        else: # This is a plot code part
+            plot_code = part_content.strip()
+            if plot_code:
+                logger.info(f"Executing python-plot code block:\n{plot_code[:300]}...") # Log snippet
+                try:
+                    # Using a fresh local scope for each execution
+                    execution_locals = {}
+                    exec(plot_code, execution_globals, execution_locals)
+
+                    # Attempt to display Matplotlib plot
+                    fig_mpl = execution_locals.get('fig', plt.gcf()) # Common practice to name the fig 'fig'
+
+                    # Check if fig_mpl is a Matplotlib Figure and has axes (i.e., something was plotted)
+                    if isinstance(fig_mpl, plt.Figure) and fig_mpl.get_axes():
+                        logger.info("Displaying Matplotlib plot.")
+                        st.pyplot(fig_mpl)
+                    elif not isinstance(fig_mpl, plt.Figure): # If fig was something else, clear plt state
+                        pass # Not a matplotlib figure from 'fig' variable or gcf() did not return one with axes
+
+                    plt.clf() # Always clear the current figure state of plt
+                    plt.close('all') # Close all figures plt might be tracking to free memory
+
+                    # Attempt to display Plotly plot
+                    # Check common names for Plotly figures in the executed code's locals
+                    fig_plotly = None
+                    if 'fig_plotly' in execution_locals:
+                        fig_plotly = execution_locals['fig_plotly']
+                    elif 'fig' in execution_locals and isinstance(execution_locals['fig'], go.Figure): # if 'fig' was used for plotly
+                        fig_plotly = execution_locals['fig']
+
+                    if fig_plotly and isinstance(fig_plotly, go.Figure):
+                        logger.info("Displaying Plotly plot.")
+                        st.plotly_chart(fig_plotly)
+                    # else:
+                        # logger.debug("No identifiable Plotly figure object found in execution locals.")
+
+                except Exception as e_exec:
+                    error_message = f"執行繪圖代碼時出錯 (Error executing plot code): {e_exec}"
+                    logger.error(error_message, exc_info=True)
+                    st.error(error_message)
+                    st.code(plot_code, language="python") # Show the problematic code
 
 def render_chat():
     """
@@ -31,10 +104,15 @@ def render_chat():
             role = message.get("role", "model")
             avatar_icon = "👤" if role == "user" else "✨"
             with st.chat_message(role, avatar=avatar_icon):
+                response_content = message["parts"][0]
                 if message.get("is_error", False):
-                    st.error(message["parts"][0])
+                    st.error(response_content)
+                elif role == "model" and "```python-plot" in response_content:
+                    # This message contains plot code, process it with the helper
+                    process_and_display_model_response_with_plots(response_content)
                 else:
-                    st.markdown(message["parts"][0]) # Markdown可以更好地顯示格式化的AI回應
+                    # Standard markdown display for user messages or simple model responses
+                    st.markdown(response_content)
 
     user_input = st.chat_input("向 Gemini 提問或給出指令：", key="chat_user_input")
 
@@ -60,11 +138,74 @@ def render_chat():
                     full_prompt_parts.append(f"**主要指示 (System Prompt):**\n{st.session_state.main_gemini_prompt}")
                     prompt_context_summary.append("系統提示詞")
 
-                if st.session_state.get("uploaded_file_contents") and isinstance(st.session_state.uploaded_file_contents, dict):
-                    num_uploaded_files = len(st.session_state.uploaded_file_contents)
-                    if num_uploaded_files > 0:
-                        uploaded_texts_str = "**已上傳文件內容摘要:**\n"
-                        for fn, content in st.session_state.uploaded_file_contents.items():
+                # --- 核心分析文件處理 (來自 Wolf_Data 或已上傳文件) ---
+                selected_core_doc_relative_paths = st.session_state.get("selected_core_documents", [])
+                wolf_data_file_map = st.session_state.get("wolf_data_file_map", {})
+                # uploaded_content_map remains for files uploaded via st.file_uploader, if we decide to allow mixing
+                # For now, the logic in main_page.py prioritizes Wolf_Data for selection if available.
+                # This chat_interface part will now prioritize resolving selected_core_doc_relative_paths using wolf_data_file_map.
+
+                if selected_core_doc_relative_paths:
+                    logger.info(f"聊天介面：檢測到 {len(selected_core_doc_relative_paths)} 個核心文件被選中。")
+                    core_docs_content_parts = ["\n**核心分析文件內容 (Core Analysis Documents Content):**\n"]
+                    files_actually_included = 0
+
+                    for rel_path in selected_core_doc_relative_paths:
+                        core_doc_full_path = wolf_data_file_map.get(rel_path)
+                        doc_display_name = os.path.basename(rel_path) # Use relative path for display name initially
+
+                        if core_doc_full_path and os.path.exists(core_doc_full_path):
+                            doc_display_name = os.path.basename(core_doc_full_path) # Update to actual basename if path resolved
+                            try:
+                                if core_doc_full_path.endswith((".txt", ".md")):
+                                    with open(core_doc_full_path, "r", encoding="utf-8") as f:
+                                        content = f.read()
+                                    core_docs_content_parts.append(f"--- Document Start: {doc_display_name} ---\n{content}\n--- Document End: {doc_display_name} ---\n\n")
+                                    logger.debug(f"聊天介面：已從 '{core_doc_full_path}' 添加核心文件 '{doc_display_name}' (文本) 到提示詞。長度: {len(content)}")
+                                    files_actually_included +=1
+                                else:
+                                    core_docs_content_parts.append(f"--- Document: {doc_display_name} (Unsupported file type for direct inclusion from Wolf_Data: {core_doc_full_path}) ---\n")
+                                    logger.warning(f"聊天介面：核心文件 '{doc_display_name}' ({core_doc_full_path}) 類型不受支持，無法直接包含。")
+                            except FileNotFoundError:
+                                core_docs_content_parts.append(f"--- Document: {doc_display_name} (File not found at path: {core_doc_full_path}) ---\n")
+                                logger.error(f"聊天介面：核心文件 '{doc_display_name}' 路徑 '{core_doc_full_path}' 未找到。")
+                            except Exception as e:
+                                core_docs_content_parts.append(f"--- Document: {doc_display_name} (Error reading file at path: {core_doc_full_path}) ---\nError: {str(e)}\n")
+                                logger.error(f"聊天介面：讀取核心文件 '{doc_display_name}' ({core_doc_full_path}) 時發生錯誤: {e}", exc_info=True)
+                        elif rel_path in st.session_state.get("uploaded_file_contents", {}): # Fallback: Check if it's a name from uploaded_files_list
+                            content = st.session_state.uploaded_file_contents[rel_path]
+                            doc_display_name = rel_path # Use the key from uploaded_files_list
+                            if isinstance(content, str):
+                                core_docs_content_parts.append(f"--- Document Start (Uploaded): {doc_display_name} ---\n{content}\n--- Document End (Uploaded): {doc_display_name} ---\n\n")
+                                logger.debug(f"聊天介面：已添加來自 st.file_uploader 的核心文件 '{doc_display_name}' (文本) 到提示詞。長度: {len(content)}")
+                            elif isinstance(content, pd.DataFrame):
+                                core_docs_content_parts.append(f"--- Document Start (Uploaded): {doc_display_name} (表格數據) ---\n欄位: {', '.join(content.columns)}\n數據 (前5行):\n{content.head(5).to_string()}\n--- Document End (Uploaded): {doc_display_name} ---\n\n")
+                                logger.debug(f"聊天介面：已添加來自 st.file_uploader 的核心文件 '{doc_display_name}' (表格) 到提示詞。Shape: {content.shape}")
+                            else:
+                                core_docs_content_parts.append(f"--- Document (Uploaded): {doc_display_name} (二進制或其他格式，無法直接預覽) ---\n[Content not directly previewable, length: {len(content)} bytes]\n--- Document End (Uploaded): {doc_display_name} ---\n\n")
+                                logger.debug(f"聊天介面：已添加來自 st.file_uploader 的核心文件 '{doc_display_name}' (二進制) 到提示詞。長度: {len(content)}")
+                            files_actually_included += 1
+                        else:
+                            # This handles cases where rel_path is neither in wolf_data_file_map nor in uploaded_file_contents (e.g. mock name if main_page uses it)
+                            core_docs_content_parts.append(f"--- Document: {rel_path} (Content not available from Wolf_Data or session uploads) ---\n")
+                            logger.warning(f"聊天介面：核心文件 '{rel_path}' 在 selected_core_documents 中，但在 wolf_data_file_map 或 uploaded_file_contents 中未找到其內容。")
+
+                    if files_actually_included > 0:
+                        full_prompt_parts.append("".join(core_docs_content_parts))
+                        prompt_context_summary.append(f"{files_actually_included}個核心分析文件")
+
+                    logger.info("聊天介面：核心分析文件處理完畢。")
+                    # Decision: If selected_core_documents is not empty, we ONLY use those.
+                    # So, we skip the general uploaded_file_contents iteration.
+                    logger.info("聊天介面：由於已選定核心分析文件，將跳過自動包含所有其他 '已上傳文件列表(uploaded_file_contents)' 的步驟。")
+
+                else: # No selected_core_doc_relative_paths, use general uploaded_file_contents if any
+                    uploaded_content_map_general = st.session_state.get("uploaded_file_contents", {})
+                    if uploaded_content_map_general:
+                        logger.info("聊天介面：未選定核心分析文件，將檢查並包含所有 '已上傳文件列表(uploaded_file_contents)' 中的文件。")
+                        num_general_uploaded_files = len(uploaded_content_map_general)
+                        uploaded_texts_str = "**已上傳文件內容摘要 (All Uploaded Files Summary):**\n"
+                        for fn, content in uploaded_content_map_general.items():
                             if isinstance(content, str):
                                 uploaded_texts_str += f"檔名: {fn}\n內容片段 (前1000字符):\n{content[:1000]}...\n\n"
                             elif isinstance(content, pd.DataFrame):
@@ -72,8 +213,9 @@ def render_chat():
                             else: # 其他類型，如 bytes
                                 uploaded_texts_str += f"檔名: {fn} (二進制或其他格式，無法直接預覽)\n\n"
                         full_prompt_parts.append(uploaded_texts_str)
-                        prompt_context_summary.append(f"{num_uploaded_files}個已上傳檔案")
+                        prompt_context_summary.append(f"{num_general_uploaded_files}個已上傳檔案 (通用)")
 
+                # --- 外部數據處理 (不變) ---
                 if st.session_state.get("fetched_data_preview") and isinstance(st.session_state.fetched_data_preview, dict):
                     num_data_sources = len(st.session_state.fetched_data_preview)
                     if num_data_sources > 0:
@@ -92,7 +234,12 @@ def render_chat():
                 last_user_input = st.session_state.chat_history[-1]["parts"][0]
                 full_prompt_parts.append(f"**使用者當前問題/指令:**\n{last_user_input}")
                 prompt_context_summary.append("用戶當前問題")
-                logger.info(f"聊天介面：Gemini 提示詞上下文包含: {', '.join(prompt_context_summary)}。")
+
+                final_prompt_for_api = "\n---\n".join(map(str, full_prompt_parts))
+                final_prompt_length = len(final_prompt_for_api)
+                logger.info(f"聊天介面：Gemini 提示詞上下文包含: {', '.join(prompt_context_summary)}。最終提示詞長度: {final_prompt_length} 字元。")
+                if final_prompt_length > 100000: # Example threshold for very long prompt
+                    logger.warning(f"聊天介面：最終提示詞長度 ({final_prompt_length} 字元) 非常長，可能影響 API 性能或成本。")
 
                 valid_gemini_api_keys = [
                     st.session_state.get(key_name, "")
@@ -117,8 +264,14 @@ def render_chat():
                     logger.info(f"聊天介面：準備調用 call_gemini_api。模型: '{selected_model_name}', 有效金鑰數量: {len(valid_gemini_api_keys)}, 使用快取: '{selected_cache_name_for_api if selected_cache_name_for_api else '否'}'")
                     logger.debug(f"聊天介面：傳遞給 call_gemini_api 的 generation_config: {generation_config}")
 
+                    # Note: call_gemini_api expects a list of parts, not a single pre-joined string.
+                    # However, our current structure of full_prompt_parts already builds it as a list of strings.
+                    # If call_gemini_api was more nuanced about parts, this might need adjustment.
+                    # For now, it implies call_gemini_api internally joins them or handles a list of strings.
+                    # Let's assume call_gemini_api joins the list elements with newlines if necessary.
+                    # The prompt_parts argument in call_gemini_api should indeed be a list of strings.
                     model_response_text = call_gemini_api(
-                        prompt_parts=full_prompt_parts,
+                        prompt_parts=full_prompt_parts, # Passing the list of strings
                         api_keys_list=valid_gemini_api_keys,
                         selected_model=selected_model_name,
                         global_rpm=st.session_state.get("global_rpm_limit", 3),

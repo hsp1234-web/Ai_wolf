@@ -1,0 +1,7 @@
+This is a placeholder for the All-in-One report prompt.
+It should guide Gemini to analyze multiple documents and generate a comprehensive report.
+Key areas to cover:
+- Document Summaries
+- Cross-document Analysis
+- Key Insights
+- Actionable Recommendations
