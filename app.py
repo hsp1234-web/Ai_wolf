@@ -27,14 +27,14 @@ def main():
     """
     # 1. 設定頁面配置 (必須是第一個 Streamlit 命令)
     st.set_page_config(
-        page_title="金融分析與洞察助理 (Gemini Pro驅動)",
+        page_title="Wolf_V5",
         layout="wide",
         initial_sidebar_state="expanded",
         menu_items={
             'Get Help': 'https://github.com/LinWolf/Gemini_Financial_Analysis_Assistant/issues',
             'Report a bug': "https://github.com/LinWolf/Gemini_Financial_Analysis_Assistant/issues",
             'About': """
-            ## 金融分析與洞察助理 (Gemini Pro 驅動)
+            ## Wolf_V5
             版本 2.1 (日誌系統增強)
             此應用程式使用 Google Gemini API 進行高級金融數據分析和生成洞察。
             由 LinWolf (https://github.com/LinWolf) 開發。

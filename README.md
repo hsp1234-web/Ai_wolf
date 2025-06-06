@@ -1,6 +1,6 @@
 # (中文內容)
 
-# 善甲狼週報 - 人機協同聊天式分析平台
+# Wolf_V5
 
 ## 專案目標
 
@@ -36,8 +36,8 @@
     *   您可以透過**手動中斷此儲存格 (Interrupt execution)** 來停止 Streamlit 服務。
 
 ```python
-#@title 🚀 一鍵完成環境設置並啟動 Ai_wolf 應用程式 (點此執行)
-# === Ai_wolf 專案：環境設置、部署、啟動與日誌監控 (單一儲存格) ===
+#@title 🚀 一鍵完成環境設置並啟動 Wolf_V5 應用程式 (點此執行)
+# === Wolf_V5 專案：環境設置、部署、啟動與日誌監控 (單一儲存格) ===
 # 執行此儲存格將完成所有必要步驟，並啟動 Streamlit 應用程式。
 # 應用程式啟動後，此儲存格會持續輸出日誌。您可以隨時手動中斷此儲存格來停止服務。
 
@@ -172,11 +172,11 @@ try:
         display(HTML(f"""
             <div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #e8f5e9;'>
                 <h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 應用程式已成功啟動！</h2>
-                <p style='font-size:1.1em;'>您的 Ai_wolf 分析平台可以透過下面的連結訪問：</p>
+                <p style='font-size:1.1em;'>您的 Wolf_V5 分析平台可以透過下面的連結訪問：</p>
                 <p style='margin: 25px 0;'>
                     <a href='{proxy_url}' target='_blank'
                        style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:8px; font-size:1.2em; font-weight: 600; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); display:inline-block;'>
-                       🚀 點此開啟 Ai_wolf 應用程式
+                       🚀 點此開啟 Wolf_V5 應用程式
                     </a>
                 </p>
                 <p style='font-size:0.9em; color:gray;'>連結地址: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>
@@ -251,16 +251,19 @@ try:
             print("--- 應用程式啟動與監控腳本執行完畢 ---", flush=True)
     else:
         clear_output(wait=True)
-        display(HTML(f"<p style='color:red; font-weight:bold;'>❌ 未能獲取 Colab 代理網址。</p>" \
-                     f"<p>請檢查 Streamlit 應用程式是否仍在運行，以及端口 {PORT} 是否被正確代理。</p>" \
-                     f"<p>您可以嘗試查看 Colab 的「執行階段」->「檢視執行階段記錄檔」以獲取 Streamlit 的直接輸出，其中可能包含 'External URL'。</p>"))
+        error_html_message = (
+            f"<p style='color:red; font-weight:bold;'>❌ 未能獲取 Colab 代理網址。</p>"
+            f"<p>請檢查 Streamlit 應用程式是否仍在運行，以及端口 {PORT} 是否被正確代理。</p>"
+            f"<p>您可以嘗試查看 Colab 的「執行階段」->「檢視執行階段記錄檔」以獲取 Streamlit 的直接輸出，其中可能包含 'External URL'。</p>"
+        )
+        display(HTML(error_html_message))
         print("\n❌ 未能啟動應用程式或獲取連結。請檢查輸出。")
 
 ```
 **執行說明：**
 *   複製此單一儲存格的全部內容到您的 Colab Notebook 中。
 *   執行此儲存格。它會先完成環境設置和專案部署，然後自動啟動 Streamlit 應用程式。
-*   成功啟動後，會顯示一個**綠色背景的「點此開啟 Ai_wolf 應用程式」大按鈕**。
+*   成功啟動後，會顯示一個**綠色背景的「點此開啟 Wolf_V5 應用程式」大按鈕**。
 *   儲存格的輸出區域將持續顯示應用程式的即時日誌。
 *   要停止 Streamlit 服務，請**手動中斷此儲存格的執行** (例如，點擊儲存格左側的停止按鈕，或使用快捷鍵 `Ctrl+M I`)。
 
@@ -325,7 +328,7 @@ try:
 
 # (English Content)
 
-# ShanJiaLang Weekly - Human-Computer Collaborative Chat-based Analysis Platform
+# Wolf_V5
 
 ## Project Goal
 (Same as previous version)
@@ -432,8 +435,8 @@ This cell will:
 4. You can stop the Streamlit service by **manually interrupting this cell (Interrupt execution)**.
 
 ```python
-#@title 2. 🚀 Launch Ai_wolf App, Get Link & Monitor Logs (Click to execute)
-# === Ai_wolf Project Launch, Link Retrieval & Log Monitoring ===
+#@title 2. 🚀 Launch Wolf_V5 App, Get Link & Monitor Logs (Click to execute)
+# === Wolf_V5 Project Launch, Link Retrieval & Log Monitoring ===
 # Cell 2: Execute this cell to launch the Streamlit application, automatically fetch the access link, and continuously output logs.
 #         You can manually interrupt this cell at any time to stop the service.
 
@@ -534,8 +537,8 @@ if proxy_url:
     clear_output(wait=True)
     display(HTML(f"<div style='border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; text-align: center; background-color: #f0fff0;'>" \
                  f"<h2 style='color: #2E7D32; margin-bottom:15px;'>🎉 Application Ready!</h2>" \
-                 f"<p style='font-size:1.1em;'>Your Ai_wolf analysis platform should be accessible via the link below:</p>" \
-                 f"<p style='margin: 25px 0;'><a href='{proxy_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px; font-size:1.2em; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);'>🚀 Click here to open Ai_wolf Application</a></p>" \
+                 f"<p style='font-size:1.1em;'>Your Wolf_V5 analysis platform should be accessible via the link below:</p>" \
+                 f"<p style='margin: 25px 0;'><a href='{proxy_url}' target='_blank' style='padding:12px 25px; background-color:#4CAF50; color:white; text-decoration:none; border-radius:5px; font-size:1.2em; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);'>🚀 Click here to open Wolf_V5 Application</a></p>" \
                  f"<p style='font-size:0.9em; color:gray;'>Link address: <a href='{proxy_url}' target='_blank'>{proxy_url}</a></p>" \
                  f"<p style='font-size:0.9em; color:gray; margin-top:15px;'>If the application doesn't load after clicking, ensure this Colab Notebook cell is still running and try refreshing the page.</p>" \
                  f"<p style='font-size:0.9em; color:orange; margin-top:10px;'><b>Note: This cell will remain running to display application logs. To stop the service, manually interrupt the execution of this cell.</b></p>" \
