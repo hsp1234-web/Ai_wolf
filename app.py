@@ -4,6 +4,26 @@ import logging
 import sys
 
 # --- 模組化導入 ---
+try:
+    from google.colab import userdata
+    IS_COLAB_ENVIRONMENT = True
+    # print("DEBUG: google.colab.userdata imported successfully.") # 臨時調試
+except ImportError:
+    IS_COLAB_ENVIRONMENT = False
+    # print("DEBUG: Failed to import google.colab.userdata. Assuming not in Colab.") # 臨時調試
+    # 創建一個模擬的 userdata 物件
+    class MockUserdata:
+        def __init__(self):
+            self._data = {} # 可以預設一些測試值
+            # print("DEBUG: MockUserdata initialized.") # 臨時調試
+        def get(self, key: str):
+            # print(f"DEBUG: MockUserdata.get called for key: {key}") # 臨時調試
+            return self._data.get(key, None) # 返回 None 如果鍵不存在
+        # 可選: 模仿 SecretNotFoundError
+        class SecretNotFoundError(Exception):
+            pass
+    userdata = MockUserdata()
+
 from utils.log_utils import StreamlitLogHandler, setup_logging # StreamlitLogHandler is imported but instance is created in setup_logging
 from utils.session_state_manager import initialize_session_state
 from utils.css_utils import load_custom_css # Removed inject_dynamic_theme_css, inject_font_size_css as they are handled differently now
@@ -14,9 +34,12 @@ from components.chat_interface import render_chat
 from components.log_display import render_log_viewer
 
 # --- 定義日誌檔案路徑 (Colab 環境) ---
+import os # 新增導入 os 模組
+
 # 這個路徑需要在 Colab Cell 1 中通過 !mkdir -p GDRIVE_PROJECT_DIR/logs 創建
 # GDRIVE_PROJECT_DIR 通常是 /content/drive/MyDrive/wolfAI
-COLAB_LOG_FILE_PATH = "/content/drive/MyDrive/wolfAI/logs/streamlit.log"
+# COLAB_LOG_FILE_PATH = "/content/drive/MyDrive/wolfAI/logs/streamlit.log" # 舊路徑
+COLAB_LOG_FILE_PATH = "/content/drive/MyDrive/MyWolfData/logs/streamlit.log" # 新路徑
 
 # --- 全局日誌記錄器 ---
 logger = logging.getLogger(__name__)
@@ -45,10 +68,49 @@ def main():
     # 2. 初始化 Session State (包含 ui_logs 的初始化)
     # 這次先調用 initialize_session_state，確保 'ui_logs' 鍵在 setup_logging 之前已存在且為列表。
     # StreamlitLogHandler 的 __init__ 也會嘗試初始化，但先做更保險。
-    initialize_session_state()
+    initialize_session_state() # 這會初始化 session_state 中的 api_keys_info 等
     # logger.info("主應用：Session state 初始化完畢。") # 日誌系統此時可能還未完全配置好
 
+    # 2.5. 嘗試從 Colab Userdata 加載 API 金鑰 (在日誌系統初始化之前或之後均可，但需在 sidebar 渲染前)
+    # logger is not fully configured yet here if we place it before log setup.
+    # Using print for initial debug if needed, then switch to logger.
+    # print("DEBUG: Attempting to load API keys from userdata...") # 臨時調試
+    try:
+        google_api_key = userdata.get('GOOGLE_API_KEY')
+        fred_api_key = userdata.get('FRED_API_KEY')
+
+        if google_api_key:
+            st.session_state.gemini_api_key = google_api_key
+            # print(f"DEBUG: Loaded GOOGLE_API_KEY from userdata (length: {len(google_api_key)}).") # 臨時調試
+        else:
+            # print("DEBUG: GOOGLE_API_KEY not found in userdata.") # 臨時調試
+            pass # 保留 session_state 中可能已有的值或手動輸入的值
+
+        if fred_api_key:
+            st.session_state.fred_api_key = fred_api_key
+            # print(f"DEBUG: Loaded FRED_API_KEY from userdata (length: {len(fred_api_key)}).") # 臨時調試
+        else:
+            # print("DEBUG: FRED_API_KEY not found in userdata.") # 臨時調試
+            pass
+
+    except Exception as e:
+        # If userdata.get itself fails (e.g. if MockUserdata.SecretNotFoundError was raised and not caught by get)
+        # print(f"DEBUG: Error accessing userdata: {e}") # 臨時調試
+        st.warning(f"讀取 Colab Secrets 時發生錯誤: {e}")
+
+
     # 3. 初始化日誌系統
+    # 在設定日誌之前，確保日誌目錄存在
+    try:
+        log_dir = os.path.dirname(COLAB_LOG_FILE_PATH)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+            logging.info(f"主應用：日誌目錄 {log_dir} 已創建。")
+    except Exception as e:
+        # 即使創建目錄失敗，也嘗試繼續，logging 模組自身可能處理或拋出錯誤
+        logging.error(f"主應用：創建日誌目錄 {log_dir} 失敗: {e}", exc_info=True)
+        st.warning(f"無法自動創建日誌目錄 {log_dir}。如果日誌無法寫入，請手動創建該目錄。")
+
     # setup_logging 會返回 StreamlitLogHandler 的實例
     # streamlit_ui_log_key='ui_logs' 是預設值，這裡明確傳遞以保持清晰
     if 'log_handler' not in st.session_state or st.session_state.log_handler is None:

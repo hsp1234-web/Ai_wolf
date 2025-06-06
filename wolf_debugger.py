@@ -22,6 +22,7 @@ except ImportError:
     print("Warning: google.colab modules not found. Using mocks. (Normal if not in Colab)")
 
 # Import heavy libraries, handling potential ImportErrors
+import os # Ensure os is imported if not already (it is, but good practice)
 try:
     import google.generativeai as genai
     import yfinance as yf
@@ -33,10 +34,14 @@ except ImportError as e:
     print(f"CriticalImportWarning: One or more libraries (genai, yf, pd, fredapi, requests) not found: {e}. Some tests will fail.")
 
 # Global defaults, will be updated by initialize_paths
-LOG_FILE_PATH = "/content/wolfAI/logs/streamlit.log"
+# LOG_FILE_PATH = "/content/wolfAI/logs/streamlit.log" # Old path
+LOG_FILE_PATH = "/content/MyWolfData/logs/streamlit.log" # Default local new path
 GDRIVE_PROJECT_DIR = None
 APP_PY_PATH = None
-PROJECT_BASE_DIR = "/content/wolfAI"
+# PROJECT_BASE_DIR = "/content/wolfAI" # Old project base for logs
+# New data-centric base (though PROJECT_BASE_DIR for code might remain wolfAI)
+DATA_BASE_DIR_LOCAL = "/content/MyWolfData"
+DATA_BASE_DIR_GDRIVE = "/content/drive/MyDrive/MyWolfData"
 
 logging_configured = False
 
@@ -58,38 +63,72 @@ def setup_logging(log_file_path_to_use):
     logging.info(f"Log system initiated. Log file at: {log_file_path_to_use}")
 
 def initialize_paths(use_gdrive=False, project_dir_name="wolfAI"):
+    # project_dir_name is for the *code* project, not necessarily where logs go.
     global GDRIVE_PROJECT_DIR, APP_PY_PATH, PROJECT_BASE_DIR, LOG_FILE_PATH
-    actual_log_dir = "" # Initialize with a valid string
+    global DATA_BASE_DIR_LOCAL, DATA_BASE_DIR_GDRIVE # Make sure these are seen as global
 
+    actual_log_dir = ""
+
+    # Determine PROJECT_BASE_DIR for code
     if use_gdrive:
         try:
             drive.mount('/content/drive', force_remount=True)
+            # GDRIVE_PROJECT_DIR is the root for the *project code* on Drive
             GDRIVE_PROJECT_DIR = f"/content/drive/MyDrive/{project_dir_name}"
             PROJECT_BASE_DIR = GDRIVE_PROJECT_DIR
-            actual_log_dir = os.path.join(GDRIVE_PROJECT_DIR, "logs")
+            # Log directory is now based on DATA_BASE_DIR_GDRIVE
+            actual_log_dir = os.path.join(DATA_BASE_DIR_GDRIVE, "logs")
         except Exception as e:
-            # Do not log here yet as logging might not be set up. Store error for later.
             # drive_mount_error = e
-            GDRIVE_PROJECT_DIR = None # Fallback
-            PROJECT_BASE_DIR = f"/content/{project_dir_name}"
-            actual_log_dir = os.path.join(PROJECT_BASE_DIR, "logs")
+            GDRIVE_PROJECT_DIR = None # Fallback for project code
+            PROJECT_BASE_DIR = f"/content/{project_dir_name}" # Local project code
+            # Log directory falls back to local data path
+            actual_log_dir = os.path.join(DATA_BASE_DIR_LOCAL, "logs")
     else:
-        PROJECT_BASE_DIR = f"/content/{project_dir_name}"
-        actual_log_dir = os.path.join(PROJECT_BASE_DIR, "logs")
+        PROJECT_BASE_DIR = f"/content/{project_dir_name}" # Local project code
+        # Log directory is local data path
+        actual_log_dir = os.path.join(DATA_BASE_DIR_LOCAL, "logs")
 
-    if not os.path.exists(PROJECT_BASE_DIR): os.makedirs(PROJECT_BASE_DIR, exist_ok=True)
-    if actual_log_dir and not os.path.exists(actual_log_dir): os.makedirs(actual_log_dir, exist_ok=True)
+    # Ensure project code directory exists
+    if not os.path.exists(PROJECT_BASE_DIR):
+        os.makedirs(PROJECT_BASE_DIR, exist_ok=True)
+        # print(f"Debug: Created PROJECT_BASE_DIR {PROJECT_BASE_DIR}") # Temporary print
+
+    # Ensure the actual_log_dir exists (whether on GDrive or local)
+    if actual_log_dir: # Should always be true due to logic above
+        if not os.path.exists(actual_log_dir):
+            os.makedirs(actual_log_dir, exist_ok=True)
+            # print(f"Debug: Created actual_log_dir {actual_log_dir}") # Temporary print
+    else:
+        # This case should ideally not be reached if logic is correct.
+        # Fallback to a default local log path if actual_log_dir is somehow empty.
+        print("Warning: actual_log_dir was unexpectedly empty. Defaulting log path.")
+        actual_log_dir = os.path.join(DATA_BASE_DIR_LOCAL, "logs")
+        if not os.path.exists(actual_log_dir):
+            os.makedirs(actual_log_dir, exist_ok=True)
+
 
     LOG_FILE_PATH = os.path.join(actual_log_dir, "streamlit.log")
-    APP_PY_PATH = os.path.join(PROJECT_BASE_DIR, "app.py")
+    APP_PY_PATH = os.path.join(PROJECT_BASE_DIR, "app.py") # app.py is in the project code dir
 
     # Crucially, setup logging AFTER all paths are defined.
     if not logging_configured : setup_logging(LOG_FILE_PATH)
 
-    logging.info(f"Project base directory: {PROJECT_BASE_DIR}")
+    # Logging statements should use the configured logger now
+    logging.info(f"Project base directory (for code): {PROJECT_BASE_DIR}")
+    logging.info(f"Log file path set to: {LOG_FILE_PATH}")
+
     if use_gdrive:
-        if GDRIVE_PROJECT_DIR: logging.info(f"Google Drive successfully mounted. Path: {GDRIVE_PROJECT_DIR}")
-        else: logging.error(f"Google Drive mount requested but failed. Using local: {PROJECT_BASE_DIR}")
+        if GDRIVE_PROJECT_DIR: # This means drive.mount likely succeeded for the *code* project path
+            logging.info(f"Google Drive path for project code: {GDRIVE_PROJECT_DIR}")
+            # Check if log path is also on drive
+            if DATA_BASE_DIR_GDRIVE in actual_log_dir:
+                 logging.info(f"Log directory is on Google Drive: {actual_log_dir}")
+            else:
+                 logging.warning(f"Log directory is local ({actual_log_dir}) despite use_gdrive=True (possibly GDrive mount issue for data path).")
+        else:
+            logging.error(f"Google Drive mount requested but failed for project code. Using local: {PROJECT_BASE_DIR}")
+            logging.info(f"Log directory is local: {actual_log_dir}")
     else:
         logging.info(f"Google Drive not used. Using local path: {PROJECT_BASE_DIR}")
 
