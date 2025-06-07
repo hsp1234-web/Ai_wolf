@@ -17,6 +17,7 @@ from services.data_fetchers import (
 )
 from config.api_keys_config import api_keys_info # For checking Gemini keys
 from config import app_settings # Import the whole module for constants
+from config.app_settings import ALLOWED_UPLOAD_FILE_TYPES, TEXT_PREVIEW_MAX_CHARS, CORE_DOC_SCAN_EXTENSIONS, AGENT_BUTTONS_PER_ROW # Import specific settings
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ def render_main_page_content():
         st.info(f"目前沒有可用的 Agent 快捷任務。請在 '{app_settings.PROMPTS_DIR}' 文件夾下添加 'agent_*.txt' 文件。")
     else:
         # Determine number of columns, e.g., 3 or 4 per row
-        num_cols = min(len(agent_prompt_files), 3) # Max 3 buttons per row, or fewer if less files
+        num_cols = min(len(agent_prompt_files), app_settings.AGENT_BUTTONS_PER_ROW) # Max buttons per row from settings
         cols = st.columns(num_cols)
         for i, prompt_file in enumerate(agent_prompt_files):
             button_label = prompt_file.replace("agent_", "").replace(".txt", "").replace("_", " ").title()
@@ -136,7 +137,7 @@ def render_main_page_content():
 
     uploaded_files_from_widget = st.file_uploader(
         "上傳新文件到當前會話 (可多選):",
-        type=["txt", "csv", "xls", "xlsx", "md", "py", "json", "xml", "html", "css", "js"],
+        type=app_settings.ALLOWED_UPLOAD_FILE_TYPES,
         accept_multiple_files=True,
         key="main_file_uploader_widget",
         help="此處上傳的文件將可用於下方選擇進行 All-in-One 分析，或用於其他獨立分析功能。"
@@ -158,7 +159,7 @@ def render_main_page_content():
             content_or_df = st.session_state.uploaded_file_contents.get(file_name)
             with st.expander(f"檔名: {file_name} (點擊展開/收起預覽)", expanded=False):
                 if isinstance(content_or_df, str):
-                    st.text(content_or_df[:500] + "..." if len(content_or_df) > 500 else content_or_df)
+                    st.text(content_or_df[:app_settings.TEXT_PREVIEW_MAX_CHARS] + "..." if len(content_or_df) > app_settings.TEXT_PREVIEW_MAX_CHARS else content_or_df)
                 elif isinstance(content_or_df, pd.DataFrame):
                     st.dataframe(content_or_df.head())
                 elif content_or_df is None and file_name in st.session_state.uploaded_files_list: # 文件名在列表中但內容為空
@@ -199,7 +200,7 @@ def render_main_page_content():
         logger.info(f"主頁面：開始掃描 Wolf_Data 目錄: {SOURCE_DOCS_DIR}")
         for root, _, files in os.walk(SOURCE_DOCS_DIR):
             for file in files:
-                if file.endswith((".txt", ".md")):
+                if file.endswith(app_settings.CORE_DOC_SCAN_EXTENSIONS):
                     full_path = os.path.join(root, file)
                     relative_path = os.path.relpath(full_path, SOURCE_DOCS_DIR)
                     display_name_to_path[relative_path] = full_path

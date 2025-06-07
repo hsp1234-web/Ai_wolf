@@ -1,10 +1,11 @@
 # utils/css_utils.py (替換整個檔案)
 import streamlit as st
 import logging
+from config.app_settings import DEFAULT_CSS_FILE, DEFAULT_THEME, DEFAULT_FONT_SIZE_NAME # Import specific settings
 
 logger = logging.getLogger(__name__)
 
-def load_custom_css(css_file_path: str = "style.css") -> None:
+def load_custom_css(css_file_path: str = app_settings.DEFAULT_CSS_FILE) -> None:
     """
     從指定路徑讀取 CSS 檔案並在 Streamlit 應用中應用它。
     """
@@ -25,10 +26,10 @@ def apply_dynamic_css() -> None:
     根據 session_state 注入動態 CSS，以控制主題和字體大小。
     這是透過直接注入 <style> 標籤來修改 body 的 class 來實現的，更為穩健。
     """
-    active_theme = st.session_state.get("active_theme", "Light")
-    font_size_name = st.session_state.get("font_size_name", "Medium")
-    font_size_css_map = st.session_state.get("font_size_css_map", {})
-    font_class = font_size_css_map.get(font_size_name, "font-medium")
+    active_theme = st.session_state.get("active_theme", app_settings.DEFAULT_THEME)
+    font_size_name = st.session_state.get("font_size_name", app_settings.DEFAULT_FONT_SIZE_NAME)
+    font_size_css_map = st.session_state.get("font_size_css_map", {}) # Assuming FONT_SIZE_CSS_MAP is already in session_state from initializer
+    font_class = font_size_css_map.get(font_size_name, "font-medium") # Fallback class if name not in map
     theme_class = "theme-dark" if active_theme == "Dark" else "theme-light"
 
     # 使用 JavaScript 動態地為 body 添加或刪除 class

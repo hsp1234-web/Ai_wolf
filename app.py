@@ -8,7 +8,7 @@ import os # 引入 os 以便處理路徑
 from utils.log_utils import setup_logging
 from utils.session_state_manager import initialize_session_state
 from utils.css_utils import load_custom_css, apply_dynamic_css # 導入新的函數
-from utils.path_manager import APP_LOG_DIR, APP_LOG_FILE_PATH # Import new paths
+from utils.path_manager import APP_LOG_DIR, LOG_FILE_PATH # Import new paths, corrected APP_LOG_FILE_PATH to LOG_FILE_PATH
 
 from components.sidebar import render_sidebar
 from components.main_page import render_main_page_content
@@ -35,11 +35,11 @@ def main():
     if 'log_handler' not in st.session_state or st.session_state.log_handler is None:
         log_handler_instance = setup_logging(
             log_level=logging.INFO,
-            log_file_path=APP_LOG_FILE_PATH,
+            log_file_path=LOG_FILE_PATH,
             streamlit_ui_log_key='ui_logs'
         )
         st.session_state.log_handler = log_handler_instance
-        logging.getLogger(__name__).info(f"主應用: 日誌系統初始化完成. 日誌將寫入至 {APP_LOG_FILE_PATH}")
+        logging.getLogger(__name__).info(f"主應用: 日誌系統初始化完成. 日誌將寫入至 {LOG_FILE_PATH}")
     else:
         logging.getLogger(__name__).debug("主應用: 日誌系統已存在於 session_state.")
 

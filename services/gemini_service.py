@@ -5,6 +5,7 @@ import google.api_core.exceptions
 import time
 import logging
 from typing import List, Dict, Optional, Any, Tuple
+from config.app_settings import TOKEN_SAFETY_FACTOR # Import specific setting
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +100,9 @@ def call_gemini_api(
 
         try:
             model_token_limit = model.input_token_limit
-            safety_factor = 0.90
-            effective_token_limit = int(model_token_limit * safety_factor)
-            logger.info(f"call_gemini_api: 模型 '{selected_model}' 輸入 Token 上限: {model_token_limit}, 安全計算閾值: {effective_token_limit}")
+            # safety_factor = 0.90 # Replaced by app_settings.TOKEN_SAFETY_FACTOR
+            effective_token_limit = int(model_token_limit * app_settings.TOKEN_SAFETY_FACTOR)
+            logger.info(f"call_gemini_api: 模型 '{selected_model}' 輸入 Token 上限: {model_token_limit}, 安全計算閾值 (x{app_settings.TOKEN_SAFETY_FACTOR}): {effective_token_limit}")
 
             final_contents_for_api_call, was_truncated = _truncate_prompt_parts(
                 prompt_parts, model, effective_token_limit, logger

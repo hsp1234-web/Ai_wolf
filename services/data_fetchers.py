@@ -8,10 +8,12 @@ import requests
 import io
 import logging
 from config.app_settings import NY_FED_POSITIONS_URLS, SBP_XML_SUM_COLS_CONFIG # Import new config
+from config.app_settings import YFINANCE_CACHE_TTL_SECONDS, FRED_CACHE_TTL_SECONDS, NY_FED_REQUEST_TIMEOUT_SECONDS # Import specific settings
+
 
 logger = logging.getLogger(__name__)
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=app_settings.YFINANCE_CACHE_TTL_SECONDS)
 def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str, interval: str):
     """
     從 Yahoo Finance 獲取指定股票代碼的歷史數據。
@@ -95,7 +97,7 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
     logger.info(f"YFinance 數據獲取流程結束。成功獲取 {len(data_frames)} 個 Ticker 的數據。共發生 {len(errors)} 個錯誤/警告。")
     return data_frames, errors
 
-@st.cache_data(ttl=86400) # 每日快取 FRED 數據
+@st.cache_data(ttl=app_settings.FRED_CACHE_TTL_SECONDS) # 每日快取 FRED 數據
 def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str, api_key: str):
     """
     從 FRED (Federal Reserve Economic Data) 獲取指定經濟序列的數據。日誌記錄已添加。
@@ -212,6 +214,7 @@ def fetch_ny_fed_data():
     all_positions_data = []
     errors = []
 
+    # HEADER_ROW_ASSUMPTION and DATE_COLUMN_INDEX_ASSUMPTION are noted as lower priority for app_settings for now
     HEADER_ROW_ASSUMPTION = 4
     DATE_COLUMN_INDEX_ASSUMPTION = 0
     logger.debug(f"NY Fed 配置 - 表頭行(假設): {HEADER_ROW_ASSUMPTION}, 日期列索引(假設): {DATE_COLUMN_INDEX_ASSUMPTION}")
@@ -223,7 +226,7 @@ def fetch_ny_fed_data():
 
         logger.info(f"開始處理 NY Fed 數據源: '{name}' (類型: {file_type}) 從 URL: {url}")
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=app_settings.NY_FED_REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
             logger.debug(f"成功從 URL '{url}' ({name}) 下載數據，狀態碼: {response.status_code}，內容長度: {len(response.content)}")
 

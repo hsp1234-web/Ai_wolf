@@ -1,6 +1,7 @@
 # components/log_display.py
 import streamlit as st
 import logging
+from config.app_settings import LOG_DISPLAY_HEIGHT # Import specific setting
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def render_log_viewer():
         st.text_area(
             "日誌內容 (最新的在最上方):",
             value=log_text_display,
-            height=300,
+            height=app_settings.LOG_DISPLAY_HEIGHT,
             key="ui_log_display_text_area",
             disabled=True,
             help="此處顯示應用程式運行時的 UI 相關日誌。詳細的後端日誌請查看控制台或日誌檔案。"

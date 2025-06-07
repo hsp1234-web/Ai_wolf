@@ -2,6 +2,7 @@
 import os
 import sys
 from config import app_settings
+from config.app_settings import DEFAULT_LOG_FILENAME # Import specific setting
 
 IN_COLAB = 'google.colab' in sys.modules
 
@@ -14,7 +15,7 @@ def get_base_data_dir():
 
 BASE_DATA_DIR = get_base_data_dir()
 APP_LOG_DIR = os.path.join(BASE_DATA_DIR, app_settings.APP_LOG_DIR_NAME)
-LOG_FILE_PATH = os.path.join(APP_LOG_DIR, "streamlit.log") # Assuming "streamlit.log" is the fixed name
+LOG_FILE_PATH = os.path.join(APP_LOG_DIR, app_settings.DEFAULT_LOG_FILENAME) # Use setting for filename
 SOURCE_DOCS_DIR = os.path.join(BASE_DATA_DIR, app_settings.SOURCE_DOCUMENTS_DIR_NAME)
 
 # Ensure the log directory exists when this module is loaded

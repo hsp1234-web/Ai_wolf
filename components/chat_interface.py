@@ -9,9 +9,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np # For exec context
 from services.gemini_service import call_gemini_api
-from services.prompt_builder import build_gemini_request_contents # Import the new prompt builder
+from services.prompt_builder import build_gemini_request_contents
 from config.api_keys_config import api_keys_info # To get Gemini key names
-# from config import app_settings # Might be needed if prompt_builder uses some settings directly
+from config import app_settings # Import app_settings for DEFAULT_MAIN_GEMINI_PROMPT
+from config.app_settings import DEFAULT_GENERATION_CONFIG, DEFAULT_CHAT_CONTAINER_HEIGHT # Import specific settings
 
 logger = logging.getLogger(__name__)
 
@@ -92,90 +93,77 @@ def _trigger_gemini_response_processing():
         model_response_text = ""
         is_error_response = False
         try:
-            logger.debug("聊天介面：開始構建 Gemini API 的提示詞列表 (prompt_parts)。")
-            full_prompt_parts = []
-            prompt_context_summary = []
+            logger.debug("聊天介面：開始構建 Gemini API 的提示詞列表 (prompt_parts) using prompt_builder.")
 
-            if st.session_state.get("main_gemini_prompt"):
-                full_prompt_parts.append(f"**主要指示 (System Prompt):**\n{st.session_state.main_gemini_prompt}")
-                prompt_context_summary.append("系統提示詞")
+            # Retrieve data for prompt builder
+            system_prompt_to_use = st.session_state.get("main_gemini_prompt", app_settings.DEFAULT_MAIN_GEMINI_PROMPT)
 
+            # Prepare core_docs_contents for the builder
+            # This will be List[Dict[str, str]] or None
+            core_docs_for_builder = []
             selected_core_doc_relative_paths = st.session_state.get("selected_core_documents", [])
             wolf_data_file_map = st.session_state.get("wolf_data_file_map", {})
+            uploaded_files_content_map = st.session_state.get("uploaded_file_contents", {})
 
             if selected_core_doc_relative_paths:
-                logger.info(f"聊天介面：檢測到 {len(selected_core_doc_relative_paths)} 個核心文件被選中。")
-                core_docs_content_parts = ["\n**核心分析文件內容 (Core Analysis Documents Content):**\n"]
-                files_actually_included = 0
+                logger.info(f"聊天介面：處理 {len(selected_core_doc_relative_paths)} 個選定的核心文件以用於 prompt_builder。")
                 for rel_path in selected_core_doc_relative_paths:
-                    core_doc_full_path = wolf_data_file_map.get(rel_path)
                     doc_display_name = os.path.basename(rel_path)
+                    content_to_add = None
+                    core_doc_full_path = wolf_data_file_map.get(rel_path)
+
                     if core_doc_full_path and os.path.exists(core_doc_full_path):
-                        doc_display_name = os.path.basename(core_doc_full_path)
                         try:
                             if core_doc_full_path.endswith((".txt", ".md")):
-                                with open(core_doc_full_path, "r", encoding="utf-8") as f: content = f.read()
-                                core_docs_content_parts.append(f"--- Document Start: {doc_display_name} ---\n{content}\n--- Document End: {doc_display_name} ---\n\n")
-                                files_actually_included +=1
+                                with open(core_doc_full_path, "r", encoding="utf-8") as f:
+                                    content_to_add = f.read()
+                            # For DataFrames or other types from Wolf_Data, they'd need specific handling here
+                            # Assuming for now Wolf_Data primarily contains text files for core_docs
                             else:
-                                core_docs_content_parts.append(f"--- Document: {doc_display_name} (Unsupported file type from Wolf_Data: {core_doc_full_path}) ---\n")
+                                content_to_add = f"[Unsupported file type from Wolf_Data: {doc_display_name}]"
                         except Exception as e:
-                            core_docs_content_parts.append(f"--- Document: {doc_display_name} (Error reading file: {core_doc_full_path}) ---\nError: {str(e)}\n")
-                    elif rel_path in st.session_state.get("uploaded_file_contents", {}):
-                        content = st.session_state.uploaded_file_contents[rel_path]
-                        doc_display_name = rel_path
-                        if isinstance(content, str):
-                            core_docs_content_parts.append(f"--- Document Start (Uploaded): {doc_display_name} ---\n{content}\n--- Document End (Uploaded): {doc_display_name} ---\n\n")
-                        elif isinstance(content, pd.DataFrame):
-                            core_docs_content_parts.append(f"--- Document Start (Uploaded): {doc_display_name} (表格數據) ---\n欄位: {', '.join(content.columns)}\n數據 (前5行):\n{content.head(5).to_string()}\n--- Document End (Uploaded): {doc_display_name} ---\n\n")
-                        else:
-                            core_docs_content_parts.append(f"--- Document (Uploaded): {doc_display_name} (二進制或其他格式) ---\n[Content not directly previewable, length: {len(content)} bytes]\n--- Document End (Uploaded): {doc_display_name} ---\n\n")
-                        files_actually_included += 1
+                            content_to_add = f"[Error reading file {doc_display_name}: {str(e)}]"
+                    elif rel_path in uploaded_files_content_map: # Check general uploaded files if selected as core
+                        content_to_add = uploaded_files_content_map[rel_path]
                     else:
-                        core_docs_content_parts.append(f"--- Document: {rel_path} (Content not available) ---\n")
-                if files_actually_included > 0:
-                    full_prompt_parts.append("".join(core_docs_content_parts))
-                    prompt_context_summary.append(f"{files_actually_included}個核心分析文件")
-                logger.info("聊天介面：核心分析文件處理完畢。")
-            else:
-                uploaded_content_map_general = st.session_state.get("uploaded_file_contents", {})
-                if uploaded_content_map_general:
-                    num_general_uploaded_files = len(uploaded_content_map_general)
-                    uploaded_texts_str = "**已上傳文件內容摘要 (All Uploaded Files Summary):**\n"
-                    for fn, content in uploaded_content_map_general.items():
-                        if isinstance(content, str): uploaded_texts_str += f"檔名: {fn}\n內容片段 (前1000字符):\n{content[:1000]}...\n\n"
-                        elif isinstance(content, pd.DataFrame): uploaded_texts_str += f"檔名: {fn} (表格數據)\n欄位: {', '.join(content.columns)}\n前3行:\n{content.head(3).to_string()}\n\n"
-                        else: uploaded_texts_str += f"檔名: {fn} (二進制或其他格式)\n\n"
-                    full_prompt_parts.append(uploaded_texts_str)
-                    prompt_context_summary.append(f"{num_general_uploaded_files}個已上傳檔案 (通用)")
+                        content_to_add = "[Content not available]"
 
-            if st.session_state.get("fetched_data_preview") and isinstance(st.session_state.fetched_data_preview, dict):
-                num_data_sources = len(st.session_state.fetched_data_preview)
-                if num_data_sources > 0:
-                    external_data_str = "**已引入的外部市場與總經數據摘要:**\n"
-                    for source, data_items in st.session_state.fetched_data_preview.items():
-                        external_data_str += f"\n來源: {source.upper()}\n"
-                        if isinstance(data_items, dict):
-                            for item_name, df_item in data_items.items():
-                                if isinstance(df_item, pd.DataFrame): external_data_str += f"  {item_name} (最近3筆):\n{df_item.tail(3).to_string(index=False)}\n"
-                        elif isinstance(data_items, pd.DataFrame): external_data_str += f"  {source}數據 (最近3筆):\n{data_items.tail(3).to_string(index=False)}\n"
-                    full_prompt_parts.append(external_data_str)
-                    prompt_context_summary.append(f"{num_data_sources}個外部數據源")
+                    core_docs_for_builder.append({"name": doc_display_name, "content": content_to_add})
 
+            # Fallback: if no core docs selected, check if general uploaded files should be used (as per old logic)
+            # The prompt_builder's `core_docs_contents` can handle general uploaded files too if formatted as List[Dict]
+            # For simplicity and to match the new builder's design, we'll only pass selected_core_documents here.
+            # If general uploaded files need to be included when no core docs are selected,
+            # that logic could be added here to populate core_docs_for_builder from uploaded_files_content_map.
+            # For now, sticking to selected_core_documents for `core_docs_contents`.
+            # If `core_docs_for_builder` is empty, it will be passed as None or empty list to builder.
+
+            external_data_for_prompt = st.session_state.get("fetched_data_preview") # This is Dict[str, Any]
             last_user_input = st.session_state.chat_history[-1]["parts"][0]
-            full_prompt_parts.append(f"**使用者當前問題/指令:**\n{last_user_input}")
-            prompt_context_summary.append("用戶當前問題")
 
-            # final_prompt_for_api = "\n---\n".join(map(str, full_prompt_parts)) # This was for single string prompt
-            # The call_gemini_api expects a list of parts.
-            # Ensure full_prompt_parts is a list of strings/parts suitable for the API.
+            # chat_history_for_prompt: Passing None as per subtask instructions for initial refactoring.
+            # If chat history needs to be passed, it would be st.session_state.chat_history (after potential formatting)
+            chat_history_for_builder = None
 
-            final_prompt_length = sum(len(str(p)) for p in full_prompt_parts)
-            logger.info(f"聊天介面：Gemini 提示詞上下文包含: {', '.join(prompt_context_summary)}。最終提示詞長度: {final_prompt_length} 字元。")
+            logger.info(f"聊天介面：調用 build_gemini_request_contents。系統提示: {'是' if system_prompt_to_use else '否'}, 核心文件數: {len(core_docs_for_builder)}, 外部數據: {'是' if external_data_for_prompt else '否'}")
+
+            full_prompt_parts = build_gemini_request_contents(
+                main_system_prompt=system_prompt_to_use,
+                core_docs_contents=core_docs_for_builder if core_docs_for_builder else None,
+                external_data_summaries=external_data_for_prompt if external_data_for_prompt else None,
+                chat_history_for_prompt=chat_history_for_builder,
+                current_user_input=last_user_input
+            )
+
+            # Logging the context summary is now handled by the builder itself.
+            # final_prompt_length = sum(len(str(p)) for p in full_prompt_parts) # Optional: log length if needed
+            # logger.info(f"聊天介面：從 prompt_builder 獲得 {len(full_prompt_parts)} 個提示部分。")
+
 
             valid_gemini_api_keys = [st.session_state.get(key_name, "") for key_name in api_keys_info.values() if "gemini" in key_name.lower() and st.session_state.get(key_name, "")]
             selected_model_name = st.session_state.get("selected_model_name")
-            generation_config = st.session_state.get("generation_config", {"temperature": 0.7, "top_p": 0.9, "top_k": 32, "max_output_tokens": 8192})
+            # Use DEFAULT_GENERATION_CONFIG from app_settings
+            generation_config = st.session_state.get("generation_config", app_settings.DEFAULT_GENERATION_CONFIG)
             selected_cache_name_for_api = st.session_state.get("selected_cache_for_generation")
 
             if not valid_gemini_api_keys:
@@ -237,7 +225,8 @@ def render_chat():
 
     st.header("💬 步驟三：與 Gemini 進行分析與討論")
 
-    chat_container_height = st.session_state.get("chat_container_height", 400)
+    # Use DEFAULT_CHAT_CONTAINER_HEIGHT from app_settings
+    chat_container_height = st.session_state.get("chat_container_height", app_settings.DEFAULT_CHAT_CONTAINER_HEIGHT)
     chat_container = st.container(height=chat_container_height)
     logger.debug(f"聊天介面：聊天容器高度設置為 {chat_container_height}px。")
 
