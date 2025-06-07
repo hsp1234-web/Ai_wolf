@@ -39,7 +39,8 @@ def initialize_session_state():
     if IS_COLAB:
         logger.info("在 Colab 環境中，嘗試從 userdata 加載 API 金鑰。")
         try:
-            if userdata: # 新增的檢查
+            # 檢查 userdata 是否可用且具有 'get' 方法
+            if hasattr(userdata, 'get'):
                 google_api_key_colab = userdata.get('GOOGLE_API_KEY')
                 if google_api_key_colab:
                     st.session_state[api_keys_info['Google Gemini API Key 1']] = google_api_key_colab
@@ -47,13 +48,14 @@ def initialize_session_state():
                 else:
                     logger.info("在 Colab userdata 中未找到 GOOGLE_API_KEY。")
 
-            if userdata: # 新增的檢查
                 fred_api_key_colab = userdata.get('FRED_API_KEY')
                 if fred_api_key_colab:
                     st.session_state[api_keys_info['FRED API Key']] = fred_api_key_colab
                     logger.info("已從 Colab userdata 加載 FRED_API_KEY。")
                 else:
                     logger.info("在 Colab userdata 中未找到 FRED_API_KEY。")
+            else:
+                logger.warning("Colab userdata 物件似乎不可用或不完整 (缺少 'get' 方法)。跳過從 userdata 加載 API 金鑰。")
         except Exception as e:
             logger.error(f"從 Colab userdata 加載 API 金鑰時發生錯誤: {e}")
     else:
@@ -139,7 +141,7 @@ def initialize_session_state():
     if "cache_content_input" not in st.session_state:
         st.session_state.cache_content_input = ""
     if "cache_ttl_seconds_input" not in st.session_state:
-        st.session_state.cache_ttl_seconds_input = DEFAULT_CACHE_TTL_SECONDS # Use the constant
+        st.session_state.cache_ttl_seconds_input = DEFAULT_CACHE_TTL_SECONDS # 使用常數
     if "cache_name_to_delete_input" not in st.session_state:
         st.session_state.cache_name_to_delete_input = ""
     logger.info("Gemini 內容快取管理輸入字段 session_state 初始化完畢。")
