@@ -1,17 +1,12 @@
-# Environments
 .env
-backend/.env
-.venv
-env/
-venv/
-ENV/
-
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-
-# IDE / OS specific
-.vscode/
+*.pyc
+AI_data/*.db-journal
+venv/
+.pytest_cache/
+.mypy_cache/
 .idea/
-*.DS_Store
+.vscode/
+
+# Database file (if not versioned, which is typical)
+/AI_data/main_database.db

@@ -1,9 +1,14 @@
-streamlit
-google-generativeai
-yfinance
-pandas
-fredapi
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+structlog
+python-jose[cryptography]
+passlib[bcrypt]
 requests
-matplotlib
-plotly
-numpy
+google-generativeai
+
+# Test dependencies
+pytest
+httpx
+pytest-mock
