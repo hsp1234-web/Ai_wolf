@@ -4,8 +4,10 @@ import streamlit as st
 from io import StringIO
 import os
 import sys
-from config.app_settings import MAX_UI_LOG_ENTRIES # Import specific setting
-
+# from config.app_settings import MAX_UI_LOG_ENTRIES # Will get from ui_settings
+# It's possible app_settings is imported by other modules, so direct removal from here might be fine
+# if those other modules ensure ui_settings is populated first.
+# For now, assume st.session_state.ui_settings will have this.
 
 class StreamlitLogHandler(logging.Handler):
     """
@@ -47,9 +49,11 @@ class StreamlitLogHandler(logging.Handler):
 
                 st.session_state[self.ui_log_key].append(log_entry)
                 # 考慮限制 UI 日誌列表的長度，以避免 session_state 過大
-                # max_ui_logs = 300 # Replaced by app_settings.MAX_UI_LOG_ENTRIES
-                if len(st.session_state[self.ui_log_key]) > app_settings.MAX_UI_LOG_ENTRIES:
-                    st.session_state[self.ui_log_key] = st.session_state[self.ui_log_key][-app_settings.MAX_UI_LOG_ENTRIES:]
+                ui_settings = st.session_state.get("ui_settings", {})
+                max_ui_logs = ui_settings.get("max_ui_log_entries", 300) # Fallback to 300 if not in settings
+
+                if len(st.session_state[self.ui_log_key]) > max_ui_logs:
+                    st.session_state[self.ui_log_key] = st.session_state[self.ui_log_key][-max_ui_logs:]
             except Exception as e:
                 # 如果在寫入 session_state 時發生錯誤，至少記錄到內部日誌
                 # 避免在這裡使用 logging.error() 以防止潛在的遞歸錯誤
