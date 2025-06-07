@@ -15,8 +15,7 @@
 這是啟動應用程式的**推薦方法**，因為它使用了專案中版本化的 Notebook 檔案，確保了啟動腳本與專案程式碼的一致性。
 
 1.  **點擊下方按鈕**：
-    [![在 Colab 中打開](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/LinWolf/Gemini_Financial_Analysis_Assistant/blob/wolf_V6/run_in_colab.ipynb)
-    *(請將上述連結中的 `LinWolf/Gemini_Financial_Analysis_Assistant` 和 `wolf_V6` 替換為您的實際 GitHub 用戶名、倉庫名和目標分支名，如果不同的話。目前指向原始倉庫的 `wolf_V6` 分支。)*
+    [![在 Colab 中打開](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hsp1234-web/Ai_wolf/blob/main/run_in_colab.ipynb)
 
 2.  **依照 Notebook 中的說明執行**：
     *   `run_in_colab.ipynb` 包含詳細的步驟說明，包括如何設定 API 金鑰 (透過 Colab Secrets Manager)、Google Drive 授權等。
