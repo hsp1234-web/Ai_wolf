@@ -9,6 +9,7 @@ from components.chat_interface import add_message_and_process
 from services.file_processors import handle_file_uploads, ensure_colab_drive_mount_if_needed
 import os
 import sys
+from utils.path_manager import SOURCE_DOCS_DIR, IN_COLAB #Imported from path_manager
 from services.data_fetchers import (
     fetch_yfinance_data,
     fetch_fred_data,
@@ -177,29 +178,16 @@ def render_main_page_content():
     logger.debug("主頁面：渲染核心分析文件選擇區域。")
 
     # --- Wolf_Data/source_documents/ 文件掃描邏輯 ---
-    IN_COLAB_MAIN_PAGE = 'google.colab' in sys.modules # Local check for Colab
-
-    # Construct paths using constants from app_settings
-    if IN_COLAB_MAIN_PAGE:
-        wolf_data_source_path_to_scan = os.path.join(
-            app_settings.COLAB_DRIVE_BASE_PATH,
-            app_settings.BASE_DATA_DIR_NAME,
-            app_settings.SOURCE_DOCUMENTS_DIR_NAME
-        )
-    else:
-        wolf_data_source_path_to_scan = os.path.join(
-            os.path.expanduser(app_settings.USER_HOME_DIR),
-            app_settings.BASE_DATA_DIR_NAME,
-            app_settings.SOURCE_DOCUMENTS_DIR_NAME
-        )
+    # IN_COLAB_MAIN_PAGE is now IN_COLAB from path_manager
+    # wolf_data_source_path_to_scan is now SOURCE_DOCS_DIR from path_manager
 
     can_scan_wolf_data = True
-    if IN_COLAB_MAIN_PAGE: # Only call ensure_colab_drive_mount_if_needed if in Colab and path is for Colab
+    if IN_COLAB: # Only call ensure_colab_drive_mount_if_needed if in Colab and path is for Colab
         # ensure_colab_drive_mount_if_needed expects the specific path to check,
-        # which is wolf_data_source_path_to_scan when in Colab.
-        if not ensure_colab_drive_mount_if_needed(wolf_data_source_path_to_scan):
+        # which is SOURCE_DOCS_DIR when in Colab.
+        if not ensure_colab_drive_mount_if_needed(SOURCE_DOCS_DIR):
             can_scan_wolf_data = False
-            logger.info(f"主頁面：ensure_colab_drive_mount_if_needed 返回 False for '{wolf_data_source_path_to_scan}'. 跳過掃描。")
+            logger.info(f"主頁面：ensure_colab_drive_mount_if_needed 返回 False for '{SOURCE_DOCS_DIR}'. 跳過掃描。")
             # The prompt will be shown at the top of the page.
             # We should ensure wolf_data_file_map is empty if we can't scan.
             st.session_state.wolf_data_file_map = {}
@@ -207,20 +195,20 @@ def render_main_page_content():
 
     display_name_to_path = {}
     # Only proceed with scanning if the path is considered valid (or not a Colab path needing mount)
-    if can_scan_wolf_data and os.path.exists(wolf_data_source_path_to_scan):
-        logger.info(f"主頁面：開始掃描 Wolf_Data 目錄: {wolf_data_source_path_to_scan}")
-        for root, _, files in os.walk(wolf_data_source_path_to_scan):
+    if can_scan_wolf_data and os.path.exists(SOURCE_DOCS_DIR):
+        logger.info(f"主頁面：開始掃描 Wolf_Data 目錄: {SOURCE_DOCS_DIR}")
+        for root, _, files in os.walk(SOURCE_DOCS_DIR):
             for file in files:
                 if file.endswith((".txt", ".md")):
                     full_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(full_path, wolf_data_source_path_to_scan)
+                    relative_path = os.path.relpath(full_path, SOURCE_DOCS_DIR)
                     display_name_to_path[relative_path] = full_path
         st.session_state.wolf_data_file_map = display_name_to_path
         logger.info(f"主頁面：掃描到 {len(display_name_to_path)} 個文件從 Wolf_Data。")
-    elif can_scan_wolf_data and not os.path.exists(wolf_data_source_path_to_scan):
-        # This case handles if not IN_COLAB_MAIN_PAGE and local path doesn't exist,
+    elif can_scan_wolf_data and not os.path.exists(SOURCE_DOCS_DIR):
+        # This case handles if not IN_COLAB and local path doesn't exist,
         # or if ensure_colab_drive_mount_if_needed passed but path still somehow not found (less likely for Colab)
-        logger.warning(f"主頁面：Wolf_Data 目錄 '{wolf_data_source_path_to_scan}' 不存在 (can_scan_wolf_data was True)。")
+        logger.warning(f"主頁面：Wolf_Data 目錄 '{SOURCE_DOCS_DIR}' 不存在 (can_scan_wolf_data was True)。")
         st.session_state.wolf_data_file_map = {}
     # If can_scan_wolf_data is False, wolf_data_file_map is already set to {} above.
 
@@ -234,7 +222,7 @@ def render_main_page_content():
     info_message = ""
 
     if not final_multiselect_options:
-        info_message = f"提示：在 '{wolf_data_source_path_to_scan}' 中未找到 .txt 或 .md 文件。您也可以使用上方「步驟一」上傳臨時文件。"
+        info_message = f"提示：在 '{SOURCE_DOCS_DIR}' 中未找到 .txt 或 .md 文件。您也可以使用上方「步驟一」上傳臨時文件。"
         # Fallback to uploaded files if Wolf_Data is empty and uploaded_files_list is not
         # For now, let's keep it simple and prioritize Wolf_Data. If Wolf_Data is empty, user sees that.
         # Fallback can be added later if needed.
@@ -250,7 +238,7 @@ def render_main_page_content():
 
 
     else:
-        st.info(f"請從 '{os.path.basename(wolf_data_source_path_to_scan.rstrip(os.sep))}' 目錄 (或其子目錄) 中選擇文件。")
+        st.info(f"請從 '{os.path.basename(SOURCE_DOCS_DIR.rstrip(os.sep))}' 目錄 (或其子目錄) 中選擇文件。")
 
     # 使用 relative paths (keys of wolf_data_file_map) for selection
     # st.session_state.selected_core_documents should store these relative paths
