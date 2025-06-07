@@ -14,7 +14,7 @@ from components.sidebar import render_sidebar
 from components.main_page import render_main_page_content
 from components.chat_interface import render_chat
 from components.log_display import render_log_viewer
-from config import app_settings # Import app_settings
+# from config import app_settings # Import app_settings - No longer directly needed here if APP_NAME comes from ui_settings
 
 # --- 全局日誌記錄器 ---
 logger = logging.getLogger(__name__)
@@ -23,11 +23,20 @@ def main():
     """
     應用程式主函數。
     """
-    # 1. 設定頁面配置
-    st.set_page_config(page_title=app_settings.APP_NAME, layout="wide")
-
-    # 2. 初始化 Session State (包括 API 金鑰的 Colab Secrets 讀取邏輯)
+    # 1. 初始化 Session State (this will fetch or set ui_settings, including app_name)
     initialize_session_state()
+
+    # 2. 設定頁面配置
+    # Fallback to a generic name if ui_settings or app_name within it is not available for any reason
+    page_title_to_set = "金融分析應用"
+    if "ui_settings" in st.session_state and st.session_state.ui_settings.get("app_name"):
+        page_title_to_set = st.session_state.ui_settings["app_name"]
+    elif hasattr(st.session_state, 'fallback_app_name'): # Check if fallback was explicitly set
+        page_title_to_set = st.session_state.fallback_app_name
+    else: # Ultimate fallback
+        logger.warning("app_name 未在 ui_settings 中找到，也未設定備用名稱。使用通用頁面標題。")
+
+    st.set_page_config(page_title=page_title_to_set, layout="wide")
 
     # 2.1 日誌目錄創建已移至 path_manager.py
 

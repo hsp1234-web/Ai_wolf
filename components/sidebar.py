@@ -2,12 +2,12 @@
 import streamlit as st
 import logging
 import os
-from config.api_keys_config import api_keys_info
-from config import app_settings # Import app_settings
-from config.app_settings import DEFAULT_THEME, DEFAULT_FONT_SIZE_NAME, DEFAULT_CACHE_DISPLAY_NAME # Import specific settings
-from services.model_catalog import get_available_models, format_model_display_name
+from config.api_keys_config import api_keys_info # Still needed for primary_gemini_key_name logic, though its utility is decreasing
+# from config import app_settings # No longer importing the whole module
+# from config.app_settings import DEFAULT_THEME, DEFAULT_FONT_SIZE_NAME, DEFAULT_CACHE_DISPLAY_NAME # These will come from ui_settings
+from services.model_catalog import format_model_display_name # get_available_models will be removed
 from services.gemini_service import (
-    create_gemini_cache,
+    create_gemini_cache, # This service itself might be refactored or removed if cache ops move to backend
     list_gemini_caches,
     delete_gemini_cache
 )
@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 def _render_appearance_section():
     st.sidebar.header("🎨 外觀主題與字體")
-    active_theme = st.session_state.get("active_theme", app_settings.DEFAULT_THEME)
+    # Use ui_settings with a fallback to a static default if not found
+    ui_settings = st.session_state.get("ui_settings", {})
+    active_theme = st.session_state.get("active_theme", ui_settings.get("default_theme", "Light"))
     toggle_label = f"切換到 {'亮色模式' if active_theme == 'Dark' else '暗色模式'}"
     original_theme = st.session_state.active_theme
 
@@ -42,8 +44,9 @@ def _render_appearance_section():
     st.sidebar.caption(f"目前主題: {st.session_state.active_theme}")
 
     st.sidebar.markdown("##### 選擇字體大小:")
-    font_size_options = list(st.session_state.get("font_size_css_map", app_settings.FONT_SIZE_CSS_MAP).keys())
-    current_font_size_name = st.session_state.get("font_size_name", app_settings.DEFAULT_FONT_SIZE_NAME)
+    font_size_css_map_fallback = {"Small": "font-small", "Medium": "font-medium", "Large": "font-large"}
+    font_size_options = list(st.session_state.get("font_size_css_map", ui_settings.get("font_size_css_map", font_size_css_map_fallback)).keys())
+    current_font_size_name = st.session_state.get("font_size_name", ui_settings.get("default_font_size_name", "Medium"))
 
     selected_font_size_name = st.sidebar.radio(
         "字體大小:",
@@ -61,83 +64,87 @@ def _render_appearance_section():
 
 def _render_api_keys_section():
     st.sidebar.header("🔑 API 金鑰管理")
-    st.sidebar.caption("請在此處管理您的 API 金鑰。")
-    has_valid_gemini_key = any(
-        st.session_state.get(key_name, "") for key_name in api_keys_info.values() if "gemini" in key_name.lower()
+    # logger.info("側邊欄：渲染 API 金鑰管理部分。") # Kept for logging if needed
+    st.sidebar.info(
+        "API 金鑰現在統一由後端管理。\n"
+        "請確保後端服務已正確配置所需金鑰 (例如，通過 .env 文件)。"
     )
-    if not has_valid_gemini_key:
-        logger.warning("側邊欄：未檢測到有效的 Gemini API 金鑰。")
-        st.sidebar.warning("警告：至少需要一個有效的 Gemini API 金鑰才能使用 Gemini 分析功能。")
+    # The following code for direct API key input in the sidebar is now removed.
+    # has_valid_gemini_key = any(
+    #     st.session_state.get(key_name, "") for key_name in api_keys_info.values() if "gemini" in key_name.lower()
+    # )
+    # if not has_valid_gemini_key:
+    #     logger.warning("側邊欄：未檢測到有效的 Gemini API 金鑰。")
+    #     st.sidebar.warning("警告：至少需要一個有效的 Gemini API 金鑰才能使用 Gemini 分析功能。")
 
-    keys_updated_in_sidebar = False
-    for key_label, key_name_snake_case in api_keys_info.items():
-        old_value = st.session_state.get(key_name_snake_case, "")
-        new_value = st.sidebar.text_input(
-            key_label, type="password", value=old_value, key=f"sidebar_{key_name_snake_case}_input"
-        )
-        if new_value != old_value:
-            st.session_state[key_name_snake_case] = new_value
-            logger.info(f"側邊欄：API 金鑰 '{key_label}' ({key_name_snake_case}) 已更新。新值長度: {len(new_value)} (0表示清空)")
-            keys_updated_in_sidebar = True
-            if "gemini" in key_name_snake_case.lower() and not new_value:
-                 logger.warning(f"側邊欄：Gemini API 金鑰 '{key_label}' 已被清空。")
-            elif "gemini" in key_name_snake_case.lower() and new_value:
-                 logger.info(f"側邊欄：Gemini API 金鑰 '{key_label}' 已設定。")
+    # keys_updated_in_sidebar = False
+    # for key_label, key_name_snake_case in api_keys_info.items():
+    #     old_value = st.session_state.get(key_name_snake_case, "")
+    #     new_value = st.sidebar.text_input(
+    #         key_label, type="password", value=old_value, key=f"sidebar_{key_name_snake_case}_input"
+    #     )
+    #     if new_value != old_value:
+    #         st.session_state[key_name_snake_case] = new_value
+    #         logger.info(f"側邊欄：API 金鑰 '{key_label}' ({key_name_snake_case}) 已更新。新值長度: {len(new_value)} (0表示清空)")
+    #         keys_updated_in_sidebar = True
+    #         if "gemini" in key_name_snake_case.lower() and not new_value:
+    #              logger.warning(f"側邊欄：Gemini API 金鑰 '{key_label}' 已被清空。")
+    #         elif "gemini" in key_name_snake_case.lower() and new_value:
+    #              logger.info(f"側邊欄：Gemini API 金鑰 '{key_label}' 已設定。")
 
-    if keys_updated_in_sidebar:
-        logger.info("側邊欄：至少一個 API 金鑰被更新，顯示成功訊息。")
-        st.sidebar.success("API 金鑰已更新並儲存在會話中。")
+    # if keys_updated_in_sidebar:
+    #     logger.info("側邊欄：至少一個 API 金鑰被更新，顯示成功訊息。")
+    #     st.sidebar.success("API 金鑰已更新並儲存在會話中。")
+    st.sidebar.markdown("---") # Add separator if it was removed implicitly by removing other elements
 
 def _render_gemini_model_settings_section():
     st.sidebar.header("🤖 Gemini 模型設定")
     st.sidebar.caption("選擇並配置要使用的 Gemini 模型。")
 
-    primary_gemini_key_label = api_keys_info.get('Google Gemini API Key 1', 'GOOGLE_API_KEY_PRIMARY')
-    current_api_key = st.session_state.get(primary_gemini_key_label, "")
+    # Since API keys are backend-managed, we assume if the app is running, keys are set.
+    # The check for `current_api_key` might need to be re-evaluated or removed if
+    # model fetching logic is also moved to backend or relies on backend's key status.
+    # For now, we'll keep the logic that tries to fetch models,
+    # assuming the backend will use its configured key.
+    # If `get_available_models` is refactored to not need an explicit key from frontend,
+    # then `current_api_key` here becomes less relevant for *this specific function call*.
+    # However, other parts of the app might still use `st.session_state.gemini_api_key` if not fully refactored.
+    # The task is to remove KEY INPUT and STORAGE in frontend session state from frontend sources.
 
-    options_for_model_selector = []
-    current_selected_model_object = None
-    can_fetch_models = st.session_state.get("setup_complete", False) and current_api_key
+    ui_settings = st.session_state.get("ui_settings", {})
 
-    if can_fetch_models:
-        with st.spinner("正在獲取可用模型列表..."):
-            dynamic_models = get_available_models(api_key=current_api_key)
-        if dynamic_models:
-            options_for_model_selector = dynamic_models
-            current_model_name_in_session = st.session_state.get("selected_model_name")
-            if current_model_name_in_session:
-                for model_obj in dynamic_models:
-                    if model_obj.name == current_model_name_in_session:
-                        current_selected_model_object = model_obj
-                        break
-            if not current_selected_model_object and dynamic_models:
-                current_selected_model_object = dynamic_models[0]
-                if st.session_state.get("selected_model_name") != current_selected_model_object.name:
-                    st.session_state.selected_model_name = current_selected_model_object.name
-                    logger.info(f"側邊欄：預設/回退模型設定為: '{current_selected_model_object.name}'")
-        elif current_api_key:
-            st.sidebar.warning("未能從 API 獲取模型列表。請檢查金鑰權限或稍後重試。")
-    else:
-        if not st.session_state.get("setup_complete", False):
-            st.sidebar.info("請先完成初始設定以載入模型列表。")
-        elif not current_api_key:
-            st.sidebar.warning("需要有效的 Gemini API Key 才能載入模型列表。")
+    # Model selection now uses settings from backend via ui_settings
+    available_models = ui_settings.get("available_gemini_models", []) # Expects a list of model name strings
+    default_model = ui_settings.get("default_gemini_model", None)
 
-    selected_model_object_from_sb = st.sidebar.selectbox(
+    if not available_models:
+        st.sidebar.warning("未能從後端獲取可用模型列表。請檢查後端設定。")
+        # Provide a minimal fallback if absolutely necessary for UI rendering
+        available_models = [default_model] if default_model else ["gemini-pro (備用)"]
+        if not default_model: default_model = available_models[0]
+
+
+    current_selected_model_name = st.session_state.get("selected_model_name", default_model)
+    # Ensure current_selected_model_name is valid, otherwise reset to default
+    if current_selected_model_name not in available_models:
+        current_selected_model_name = default_model
+        st.session_state.selected_model_name = current_selected_model_name # Persist the reset
+
+    selected_model_name_from_sb = st.sidebar.selectbox(
         "選擇 Gemini 模型:",
-        options=options_for_model_selector,
-        format_func=format_model_display_name,
-        index=options_for_model_selector.index(current_selected_model_object) if current_selected_model_object and options_for_model_selector and current_selected_model_object in options_for_model_selector else 0,
-        key="sidebar_selected_model_object_selector",
-        disabled=not bool(options_for_model_selector)
+        options=available_models, # List of model name strings
+        index=available_models.index(current_selected_model_name) if current_selected_model_name in available_models else 0,
+        key="sidebar_selected_model_name_selector", # Changed key to reflect it stores name now
+        disabled=not bool(available_models)
     )
 
-    if selected_model_object_from_sb and \
-       st.session_state.get("selected_model_name") != selected_model_object_from_sb.name:
-        st.session_state.selected_model_name = selected_model_object_from_sb.name
-        logger.info(f"側邊欄：用戶選擇的 Gemini 模型更改為: '{selected_model_object_from_sb.name}'")
+    if selected_model_name_from_sb and st.session_state.get("selected_model_name") != selected_model_name_from_sb:
+        st.session_state.selected_model_name = selected_model_name_from_sb
+        logger.info(f"側邊欄：用戶選擇的 Gemini 模型更改為: '{selected_model_name_from_sb}'")
 
-    old_rpm = st.session_state.get("global_rpm_limit", app_settings.DEFAULT_GEMINI_RPM_LIMIT)
+    # RPM/TPM limits - defaults from ui_settings
+    default_rpm = ui_settings.get("default_gemini_rpm_limit", 3)
+    old_rpm = st.session_state.get("global_rpm_limit", default_rpm)
     new_rpm = st.sidebar.number_input(
         "全域 RPM (每分鐘請求數):", min_value=1, value=old_rpm, step=1, key="sidebar_global_rpm_limit_input"
     )
@@ -145,19 +152,24 @@ def _render_gemini_model_settings_section():
         st.session_state.global_rpm_limit = new_rpm
         logger.info(f"側邊欄：全域 RPM 上限更改為: {new_rpm}")
 
-    old_tpm = st.session_state.get("global_tpm_limit", app_settings.DEFAULT_GEMINI_TPM_LIMIT)
+    default_tpm = ui_settings.get("default_gemini_tpm_limit", 100000)
+    old_tpm = st.session_state.get("global_tpm_limit", default_tpm)
     new_tpm = st.sidebar.number_input(
         "全域 TPM (每分鐘詞元數):", min_value=1000, value=old_tpm, step=10000, key="sidebar_global_tpm_limit_input"
     )
     if new_tpm != old_tpm:
         st.session_state.global_tpm_limit = new_tpm
         logger.info(f"側邊欄：全域 TPM 上限更改為: {new_tpm}")
-    st.sidebar.caption("注意：請參考 Gemini 官方文件了解不同模型的具體 RPM/TPM 限制。")
+    st.sidebar.caption("注意：RPM/TPM 設定為前端建議值，實際限制由後端執行。")
 
 def _render_main_prompt_section():
     st.sidebar.header("📝 主要提示詞")
     st.sidebar.caption("設定用於指導 Gemini 分析的主要提示詞。")
-    old_prompt = st.session_state.get("main_gemini_prompt", app_settings.DEFAULT_MAIN_GEMINI_PROMPT)
+    ui_settings = st.session_state.get("ui_settings", {})
+    default_prompt_fallback = "請根據上下文和我的問題提供分析。" # Simple static fallback
+    default_main_prompt = ui_settings.get("default_main_gemini_prompt", default_prompt_fallback)
+
+    old_prompt = st.session_state.get("main_gemini_prompt", default_main_prompt)
     new_prompt_text_area = st.sidebar.text_area(
         "主要分析提示詞 (System Prompt):", value=old_prompt, height=250, key="sidebar_main_gemini_prompt_input"
     )
@@ -167,39 +179,48 @@ def _render_main_prompt_section():
 
 def _render_quick_prompts_section():
     st.sidebar.header("🚀 快捷提示詞載入")
-    st.sidebar.caption(f"從 '{app_settings.PROMPTS_DIR}' 文件夾快速載入預設提示詞模板。")
+    ui_settings = st.session_state.get("ui_settings", {})
+    prompts_dir_from_settings = ui_settings.get("prompts_dir", "prompts") # Fallback to "prompts"
+
+    st.sidebar.caption(f"從 '{prompts_dir_from_settings}' 文件夾快速載入預設提示詞模板。")
     prompt_files = []
     try:
-        if os.path.exists(app_settings.PROMPTS_DIR) and os.path.isdir(app_settings.PROMPTS_DIR):
+        if os.path.exists(prompts_dir_from_settings) and os.path.isdir(prompts_dir_from_settings):
             prompt_files = [
-                f for f in os.listdir(app_settings.PROMPTS_DIR)
+                f for f in os.listdir(prompts_dir_from_settings)
                 if f.endswith(".txt") and not f.startswith("agent_")
             ]
-            if not prompt_files:
-                 prompt_files = [f for f in os.listdir(app_settings.PROMPTS_DIR) if f.endswith(".txt")]
+            if not prompt_files: # If no non-agent prompts, list all .txt files as fallback
+                 prompt_files = [f for f in os.listdir(prompts_dir_from_settings) if f.endswith(".txt")]
         else:
-            logger.warning(f"側邊欄：快捷提示詞目錄 '{app_settings.PROMPTS_DIR}' 不存在。")
+            logger.warning(f"側邊欄：快捷提示詞目錄 '{prompts_dir_from_settings}' 不存在。")
     except Exception as e:
-        logger.error(f"側邊欄：讀取快捷提示詞目錄 '{app_settings.PROMPTS_DIR}' 時出錯: {e}")
+        logger.error(f"側邊欄：讀取快捷提示詞目錄 '{prompts_dir_from_settings}' 時出錯: {e}")
         st.sidebar.error(f"讀取提示詞目錄失敗: {e}")
 
     if not prompt_files:
-        st.sidebar.info(f"在 '{app_settings.PROMPTS_DIR}' 目錄下未找到 .txt 格式的提示詞模板。")
+        st.sidebar.info(f"在 '{prompts_dir_from_settings}' 目錄下未找到 .txt 格式的提示詞模板。")
     else:
         if "selected_prompt_template" not in st.session_state:
             st.session_state.selected_prompt_template = prompt_files[0] if prompt_files else None
+
+        current_selection_index = 0
+        if st.session_state.selected_prompt_template in prompt_files:
+            current_selection_index = prompt_files.index(st.session_state.selected_prompt_template)
+
         selected_template = st.sidebar.selectbox(
             "選擇提示詞範本:", options=prompt_files,
-            index=prompt_files.index(st.session_state.selected_prompt_template) if st.session_state.selected_prompt_template in prompt_files else 0,
+            index=current_selection_index,
             key="sidebar_selected_prompt_template_selector"
         )
-        st.session_state.selected_prompt_template = selected_template
+        st.session_state.selected_prompt_template = selected_template # Update session state with current selection
+
         if st.sidebar.button("載入選定提示詞", key="sidebar_load_selected_prompt_button"):
             if st.session_state.selected_prompt_template:
-                file_path = os.path.join(app_settings.PROMPTS_DIR, st.session_state.selected_prompt_template)
+                file_path = os.path.join(prompts_dir_from_settings, st.session_state.selected_prompt_template)
                 try:
                     with open(file_path, "r", encoding="utf-8") as f: content = f.read()
-                    st.session_state.main_gemini_prompt = content
+                    st.session_state.main_gemini_prompt = content # This updates the main prompt text area
                     logger.info(f"側邊欄：已從 '{file_path}' 載入提示詞到主要提示詞區域。")
                     st.sidebar.success(f"提示詞 '{st.session_state.selected_prompt_template}' 已載入！")
                 except FileNotFoundError:
@@ -224,15 +245,27 @@ def _render_gemini_cache_management_section():
     st.sidebar.header("🧠 Gemini 內容快取")
     st.sidebar.caption("管理 Gemini API 的內容快取。")
     valid_gemini_keys_for_cache_ops = [
-        st.session_state.get(key_name) for key_name in api_keys_info.values()
-        if "gemini" in key_name.lower() and st.session_state.get(key_name)
-    ]
-    gemini_api_key_for_cache = valid_gemini_keys_for_cache_ops[0] if valid_gemini_keys_for_cache_ops else None
+    current_api_key = None # Placeholder, as key is not directly available from frontend input
+    # The logic for `gemini_api_key_for_cache` needs to be re-evaluated.
+    # Cache operations will likely need to be backend calls.
+    # For now, this section might become non-functional or display a message.
+    # OR, it could optimistically try, assuming backend has a key.
 
-    if not gemini_api_key_for_cache:
-        st.sidebar.warning("需要有效的 Gemini API 金鑰才能管理內容快取。請在上方設定。")
+    # Let's assume cache operations will be refactored to backend calls.
+    # So, we can disable or message this section for now.
+    st.sidebar.info("內容快取管理功能正在調整以配合後端金鑰管理。")
+    gemini_api_key_for_cache = None # Explicitly set to None
+
+    if not gemini_api_key_for_cache: # This will always be true now, as gemini_api_key_for_cache is None
+        st.sidebar.warning("內容快取管理目前已停用，因 API 金鑰及相關操作已移至後端或待重構。")
     else:
-        old_cache_display_name = st.session_state.get("cache_display_name_input", app_settings.DEFAULT_CACHE_DISPLAY_NAME)
+        # This 'else' block is currently unreachable due to gemini_api_key_for_cache being None.
+        # If cache functionality is re-introduced via backend, this UI might be re-enabled.
+        ui_settings = st.session_state.get("ui_settings", {})
+        default_cache_name = ui_settings.get("default_cache_display_name", "my_cache")
+        default_ttl = ui_settings.get("default_cache_ttl_seconds", 3600)
+
+        old_cache_display_name = st.session_state.get("cache_display_name_input", default_cache_name)
         new_cache_display_name = st.sidebar.text_input(
             "快取顯示名稱:", value=old_cache_display_name, key="sidebar_cache_display_name_input"
         )
@@ -246,14 +279,14 @@ def _render_gemini_cache_management_section():
         if new_cache_content != old_cache_content:
             st.session_state.cache_content_input = new_cache_content
 
-        old_cache_ttl = st.session_state.get("cache_ttl_seconds_input", app_settings.DEFAULT_CACHE_TTL_SECONDS)
+        old_cache_ttl = st.session_state.get("cache_ttl_seconds_input", default_ttl)
         new_cache_ttl = st.sidebar.number_input(
             "快取 TTL (秒):", min_value=60, value=old_cache_ttl, step=60, key="sidebar_cache_ttl_input"
         )
         if new_cache_ttl != old_cache_ttl:
             st.session_state.cache_ttl_seconds_input = new_cache_ttl
 
-        if st.sidebar.button("創建/更新內容快取", key="sidebar_create_update_cache_button"):
+        if st.sidebar.button("創建/更新內容快取 (已停用)", key="sidebar_create_update_cache_button", disabled=True):
             if st.session_state.cache_display_name_input and st.session_state.cache_content_input:
                 selected_model = st.session_state.get("selected_model_name")
                 if not selected_model:

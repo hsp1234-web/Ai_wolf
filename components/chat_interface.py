@@ -8,11 +8,13 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np # For exec context
-from services.gemini_service import call_gemini_api
-from services.prompt_builder import build_gemini_request_contents
-from config.api_keys_config import api_keys_info # To get Gemini key names
-from config import app_settings # Import app_settings for DEFAULT_MAIN_GEMINI_PROMPT
-from config.app_settings import DEFAULT_GENERATION_CONFIG, DEFAULT_CHAT_CONTAINER_HEIGHT # Import specific settings
+# Removed: from services.gemini_service import call_gemini_api
+# Removed: from services.prompt_builder import build_gemini_request_contents
+# Removed: from config.api_keys_config import api_keys_info
+import requests # Added
+import json # Added
+# from config import app_settings # No longer importing the whole module directly if settings come from ui_settings
+# from config.app_settings import DEFAULT_CHAT_CONTAINER_HEIGHT # This will come from ui_settings
 
 logger = logging.getLogger(__name__)
 
@@ -85,111 +87,130 @@ def process_and_display_model_response_with_plots(response_text: str):
 
 def _trigger_gemini_response_processing():
     """
-    Internal function to process the last user message in chat_history and get Gemini's response.
+    Internal function to process the last user message in chat_history and get AI's response via backend.
     This function assumes st.session_state.gemini_processing is already True.
     """
-    logger.info("聊天介面 (_trigger_gemini_response_processing)：開始準備並調用 Gemini API。")
-    with st.spinner("Gemini 正在思考中，請稍候..."):
+    logger.info("聊天介面 (_trigger_gemini_response_processing)：開始準備並調用後端 API。")
+    with st.spinner("AI 正在思考中，請稍候..."):
         model_response_text = ""
         is_error_response = False
+
         try:
-            logger.debug("聊天介面：開始構建 Gemini API 的提示詞列表 (prompt_parts) using prompt_builder.")
+            # 1. Collect necessary data
+            user_input = st.session_state.chat_history[-1]["parts"][0] # Get the latest user input
 
-            # Retrieve data for prompt builder
-            system_prompt_to_use = st.session_state.get("main_gemini_prompt", app_settings.DEFAULT_MAIN_GEMINI_PROMPT)
+            # Prepare chat_history for backend (ensure it's serializable and matches backend format)
+            # Assuming backend expects [{"role": "user", "parts": ["text"]}, {"role": "model", "parts": ["text"]}]
+            chat_history_for_backend = []
+            for msg in st.session_state.chat_history[:-1]: # Exclude the current user input
+                role = msg.get("role")
+                parts = msg.get("parts")
+                if role and parts: # Ensure essential fields are present
+                    chat_history_for_backend.append({"role": role, "parts": parts})
 
-            # Prepare core_docs_contents for the builder
-            # This will be List[Dict[str, str]] or None
-            core_docs_for_builder = []
-            selected_core_doc_relative_paths = st.session_state.get("selected_core_documents", [])
+            ui_settings = st.session_state.get("ui_settings", {})
+            default_prompt_from_settings = ui_settings.get("default_main_gemini_prompt", "Fallback: Provide analysis.")
+            system_prompt = st.session_state.get("main_gemini_prompt", default_prompt_from_settings)
+
+            context_documents = []
+            # Priority to selected_core_documents
+            selected_core_docs_paths = st.session_state.get("selected_core_documents", [])
             wolf_data_file_map = st.session_state.get("wolf_data_file_map", {})
             uploaded_files_content_map = st.session_state.get("uploaded_file_contents", {})
 
-            if selected_core_doc_relative_paths:
-                logger.info(f"聊天介面：處理 {len(selected_core_doc_relative_paths)} 個選定的核心文件以用於 prompt_builder。")
-                for rel_path in selected_core_doc_relative_paths:
-                    doc_display_name = os.path.basename(rel_path)
-                    content_to_add = None
-                    core_doc_full_path = wolf_data_file_map.get(rel_path)
+            processed_doc_names = set()
 
+            if selected_core_docs_paths:
+                logger.info(f"處理 {len(selected_core_docs_paths)} 個選定的核心文件。")
+                for rel_path in selected_core_docs_paths:
+                    doc_display_name = os.path.basename(rel_path)
+                    content = "[Content not available]"
+                    core_doc_full_path = wolf_data_file_map.get(rel_path)
                     if core_doc_full_path and os.path.exists(core_doc_full_path):
                         try:
                             if core_doc_full_path.endswith((".txt", ".md")):
                                 with open(core_doc_full_path, "r", encoding="utf-8") as f:
-                                    content_to_add = f.read()
-                            # For DataFrames or other types from Wolf_Data, they'd need specific handling here
-                            # Assuming for now Wolf_Data primarily contains text files for core_docs
-                            else:
-                                content_to_add = f"[Unsupported file type from Wolf_Data: {doc_display_name}]"
+                                    content = f.read()
+                            else: # Placeholder for other types, or could be an error/skip
+                                content = f"[Unsupported core file type: {doc_display_name}]"
                         except Exception as e:
-                            content_to_add = f"[Error reading file {doc_display_name}: {str(e)}]"
-                    elif rel_path in uploaded_files_content_map: # Check general uploaded files if selected as core
-                        content_to_add = uploaded_files_content_map[rel_path]
+                            content = f"[Error reading core file {doc_display_name}: {str(e)}]"
+                    elif rel_path in uploaded_files_content_map: # Check if it's a generally uploaded file selected as core
+                         content = uploaded_files_content_map[rel_path]
+
+                    context_documents.append({"filename": doc_display_name, "content": content})
+                    processed_doc_names.add(doc_display_name)
+
+            # Add other uploaded files if "Include all uploaded files" is active (or similar logic)
+            # For now, let's assume only selected_core_documents are primary context.
+            # If general uploaded files are also to be included by default, add them here, avoiding duplicates.
+            # This example assumes only selected_core_documents for simplicity of change.
+            # If you have a separate toggle for "include all uploaded files" it would be checked here.
+            # For example, to add all OTHER uploaded files not already added as core docs:
+            # for filename, content in uploaded_files_content_map.items():
+            #    if filename not in processed_doc_names: # Avoid duplication
+            #        context_documents.append({"filename": filename, "content": content})
+
+
+            external_data_summary = ""
+            fetched_data_preview = st.session_state.get("fetched_data_preview", {})
+            if fetched_data_preview:
+                summary_parts = []
+                for source, data in fetched_data_preview.items():
+                    if isinstance(data, pd.DataFrame):
+                        summary_parts.append(f"Summary for {source}:\n{data.head().to_string()}\n...")
                     else:
-                        content_to_add = "[Content not available]"
+                        summary_parts.append(f"Data from {source}: {str(data)[:200]}...")
+                external_data_summary = "\n".join(summary_parts)
 
-                    core_docs_for_builder.append({"name": doc_display_name, "content": content_to_add})
+            # 2. Construct payload
+            payload = {
+                "user_input": user_input,
+                "chat_history": chat_history_for_backend,
+                "system_prompt": system_prompt,
+                "context_documents": context_documents,
+                "external_data_summary": external_data_summary
+                # Add any other fields expected by the backend, e.g., model_name, generation_config
+                # "model_name": st.session_state.get("selected_model_name"),
+                # "generation_config": st.session_state.get("generation_config", DEFAULT_GENERATION_CONFIG)
+            }
+            logger.debug(f"發送到後端的請求體 (部分內容): user_input='{payload['user_input'][:50]}...', history_len={len(payload['chat_history'])}, system_prompt_len={len(payload['system_prompt'])}, docs_count={len(payload['context_documents'])}")
 
-            # Fallback: if no core docs selected, check if general uploaded files should be used (as per old logic)
-            # The prompt_builder's `core_docs_contents` can handle general uploaded files too if formatted as List[Dict]
-            # For simplicity and to match the new builder's design, we'll only pass selected_core_documents here.
-            # If general uploaded files need to be included when no core docs are selected,
-            # that logic could be added here to populate core_docs_for_builder from uploaded_files_content_map.
-            # For now, sticking to selected_core_documents for `core_docs_contents`.
-            # If `core_docs_for_builder` is empty, it will be passed as None or empty list to builder.
+            # 3. Send HTTP POST request
+            backend_url = "http://localhost:8000/api/chat/invoke" # As per assumption
 
-            external_data_for_prompt = st.session_state.get("fetched_data_preview") # This is Dict[str, Any]
-            last_user_input = st.session_state.chat_history[-1]["parts"][0]
+            response = requests.post(backend_url, json=payload, timeout=180) # Increased timeout
+            response.raise_for_status() # Raises HTTPError for 4xx/5xx status codes
 
-            # chat_history_for_prompt: Passing None as per subtask instructions for initial refactoring.
-            # If chat history needs to be passed, it would be st.session_state.chat_history (after potential formatting)
-            chat_history_for_builder = None
+            api_response_json = response.json()
+            model_response_text = api_response_json.get("response")
 
-            logger.info(f"聊天介面：調用 build_gemini_request_contents。系統提示: {'是' if system_prompt_to_use else '否'}, 核心文件數: {len(core_docs_for_builder)}, 外部數據: {'是' if external_data_for_prompt else '否'}")
-
-            full_prompt_parts = build_gemini_request_contents(
-                main_system_prompt=system_prompt_to_use,
-                core_docs_contents=core_docs_for_builder if core_docs_for_builder else None,
-                external_data_summaries=external_data_for_prompt if external_data_for_prompt else None,
-                chat_history_for_prompt=chat_history_for_builder,
-                current_user_input=last_user_input
-            )
-
-            # Logging the context summary is now handled by the builder itself.
-            # final_prompt_length = sum(len(str(p)) for p in full_prompt_parts) # Optional: log length if needed
-            # logger.info(f"聊天介面：從 prompt_builder 獲得 {len(full_prompt_parts)} 個提示部分。")
-
-
-            valid_gemini_api_keys = [st.session_state.get(key_name, "") for key_name in api_keys_info.values() if "gemini" in key_name.lower() and st.session_state.get(key_name, "")]
-            selected_model_name = st.session_state.get("selected_model_name")
-            # Use DEFAULT_GENERATION_CONFIG from app_settings
-            generation_config = st.session_state.get("generation_config", app_settings.DEFAULT_GENERATION_CONFIG)
-            selected_cache_name_for_api = st.session_state.get("selected_cache_for_generation")
-
-            if not valid_gemini_api_keys:
-                model_response_text = "錯誤：請在側邊欄設定至少一個有效的 Gemini API 金鑰。"
+            if model_response_text is None: # Check if 'response' key exists and has a value
+                logger.error(f"後端 API 回應中缺少 'response' 欄位或其值為 None。回應: {api_response_json}")
+                model_response_text = "錯誤：AI服務返回的數據格式不正確 (缺少 'response' 內容)。"
                 is_error_response = True
-            elif not selected_model_name:
-                model_response_text = "錯誤：請在側邊欄選擇一個 Gemini 模型。"
-                is_error_response = True
-            else:
-                # Modified call to unpack two return values
-                model_response_text, was_truncated = call_gemini_api(
-                    prompt_parts=full_prompt_parts, # This should be the list of strings
-                    api_keys_list=valid_gemini_api_keys,
-                    selected_model=selected_model_name,
-                    global_rpm=st.session_state.get("global_rpm_limit", 3),
-                    global_tpm=st.session_state.get("global_tpm_limit", 100000),
-                    generation_config_dict=generation_config,
-                    cached_content_name=selected_cache_name_for_api
-                )
-                if was_truncated:
-                    st.toast("⚠️ 為符合模型限制，部分較早的對話或文件上下文已被移除。", icon="⚠️")
+            # Any specific error handling based on backend's error structure could be added here
+            # For example, if backend returns a specific error code or message structure for partial success / truncation
 
-                if model_response_text.startswith("錯誤："): is_error_response = True
+        except requests.exceptions.HTTPError as http_err:
+            logger.error(f"後端 API HTTP 錯誤: {http_err.response.status_code} - {http_err.response.text}", exc_info=True)
+            try:
+                error_detail = http_err.response.json().get("detail", http_err.response.text)
+            except json.JSONDecodeError:
+                error_detail = http_err.response.text
+            model_response_text = f"AI服務錯誤 ({http_err.response.status_code}): {error_detail}"
+            is_error_response = True
+        except requests.exceptions.RequestException as req_err:
+            logger.error(f"後端服務通訊失敗: {req_err}", exc_info=True)
+            model_response_text = f"錯誤：無法連接到AI服務或服務無回應 ({req_err})。"
+            is_error_response = True
+        except json.JSONDecodeError as json_err:
+            logger.error(f"無法解析後端服務的回應: {json_err}", exc_info=True)
+            model_response_text = "錯誤：AI服務回應格式不正確。"
+            is_error_response = True
         except Exception as e:
-            logger.error(f"聊天介面：在準備或調用 Gemini API 時發生意外錯誤: {type(e).__name__} - {str(e)}", exc_info=True)
-            model_response_text = f"處理您的請求時發生未預期的錯誤： {type(e).__name__} - {str(e)}"
+            logger.error(f"處理AI請求時發生未知錯誤: {type(e).__name__} - {str(e)}", exc_info=True)
+            model_response_text = f"錯誤：處理您的請求時發生了意外問題 ({type(e).__name__} - {str(e)})。"
             is_error_response = True
 
         st.session_state.chat_history.append({"role": "model", "parts": [model_response_text], "is_error": is_error_response})
@@ -222,11 +243,12 @@ def render_chat():
     顯示聊天歷史、處理用戶輸入，並調用 Gemini API 生成回應。
     """
     logger.info("聊天介面：開始渲染 (render_chat)。")
+    ui_settings = st.session_state.get("ui_settings", {}) # Get ui_settings
 
     st.header("💬 步驟三：與 Gemini 進行分析與討論")
 
-    # Use DEFAULT_CHAT_CONTAINER_HEIGHT from app_settings
-    chat_container_height = st.session_state.get("chat_container_height", app_settings.DEFAULT_CHAT_CONTAINER_HEIGHT)
+    default_chat_height_from_settings = ui_settings.get("default_chat_container_height", 400) # Fallback value
+    chat_container_height = st.session_state.get("chat_container_height", default_chat_height_from_settings)
     chat_container = st.container(height=chat_container_height)
     logger.debug(f"聊天介面：聊天容器高度設置為 {chat_container_height}px。")
 

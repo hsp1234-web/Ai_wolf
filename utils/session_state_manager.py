@@ -31,37 +31,40 @@ def initialize_session_state():
 
     logger.info("開始初始化 session_state...")
 
-    # API 金鑰相關
-    for key_name in api_keys_info.values():
-        if key_name not in st.session_state:
-            st.session_state[key_name] = ""
+    # API 金鑰相關 - REMOVED
+    # API keys are now managed by the backend.
+    # The frontend will no longer attempt to load them from Colab secrets or store them in session_state directly.
+    # for key_name in api_keys_info.values():
+    #     if key_name not in st.session_state:
+    #         st.session_state[key_name] = "" # Initialize to empty string
 
-    if IS_COLAB:
-        logger.info("在 Colab 環境中，嘗試從 userdata 加載 API 金鑰。")
-        try:
-            # 檢查 userdata 是否可用且具有 'get' 方法
-            if hasattr(userdata, 'get'):
-                google_api_key_colab = userdata.get('GOOGLE_API_KEY')
-                if google_api_key_colab:
-                    st.session_state[api_keys_info['Google Gemini API Key 1']] = google_api_key_colab
-                    logger.info("已從 Colab userdata 加載 GOOGLE_API_KEY。")
-                else:
-                    logger.info("在 Colab userdata 中未找到 GOOGLE_API_KEY。")
+    # if IS_COLAB:
+    #     logger.info("在 Colab 環境中，嘗試從 userdata 加載 API 金鑰。")
+    #     try:
+    #         # 檢查 userdata 是否可用且具有 'get' 方法
+    #         if hasattr(userdata, 'get'):
+    #             google_api_key_colab = userdata.get('GOOGLE_API_KEY')
+    #             if google_api_key_colab:
+    #                 # This assumes api_keys_info['Google Gemini API Key 1'] is the correct key name string
+    #                 # st.session_state[api_keys_info['Google Gemini API Key 1']] = google_api_key_colab
+    #                 logger.info("已從 Colab userdata 讀取 GOOGLE_API_KEY (不再儲存到 session_state)。")
+    #             else:
+    #                 logger.info("在 Colab userdata 中未找到 GOOGLE_API_KEY。")
 
-                fred_api_key_colab = userdata.get('FRED_API_KEY')
-                if fred_api_key_colab:
-                    st.session_state[api_keys_info['FRED API Key']] = fred_api_key_colab
-                    logger.info("已從 Colab userdata 加載 FRED_API_KEY。")
-                else:
-                    logger.info("在 Colab userdata 中未找到 FRED_API_KEY。")
-            else:
-                logger.warning("Colab userdata 物件似乎不可用或不完整 (缺少 'get' 方法)。跳過從 userdata 加載 API 金鑰。")
-        except Exception as e:
-            logger.error(f"從 Colab userdata 加載 API 金鑰時發生錯誤: {e}")
-    else:
-        logger.info("不在 Colab 環境中或 google.colab.userdata 無法導入，跳過從 userdata 加載 API 金鑰。")
+    #             fred_api_key_colab = userdata.get('FRED_API_KEY')
+    #             if fred_api_key_colab:
+    #                 # st.session_state[api_keys_info['FRED API Key']] = fred_api_key_colab
+    #                 logger.info("已從 Colab userdata 讀取 FRED_API_KEY (不再儲存到 session_state)。")
+    #             else:
+    #                 logger.info("在 Colab userdata 中未找到 FRED_API_KEY。")
+    #         else:
+    #             logger.warning("Colab userdata 物件似乎不可用或不完整 (缺少 'get' 方法)。跳過從 userdata 加載 API 金鑰。")
+    #     except Exception as e:
+    #         logger.error(f"從 Colab userdata 加載 API 金鑰時發生錯誤: {e}")
+    # else:
+    #     logger.info("不在 Colab 環境中或 google.colab.userdata 無法導入，跳過從 userdata 加載 API 金鑰。")
 
-    logger.info("API 金鑰 session_state 初始化完畢。")
+    logger.info("API 金鑰相關的 session_state 初始化步驟已更新 (不再從前端加載金鑰)。")
 
     # Gemini 模型設定
     if "initialized_model_settings" not in st.session_state:
@@ -163,7 +166,75 @@ def initialize_session_state():
         logger.info("Colab Drive 掛載路徑請求 (drive_path_requested) 已初始化為空字串。")
 
     st.session_state.initialized_keys = True
-    logger.info("Session_state 初始化完成。")
+    logger.info("Session_state 基本鍵初始化完成。")
+
+    # --- Fetch UI settings from backend ---
+    if 'ui_settings' not in st.session_state:
+        logger.info("嘗試從後端獲取 UI 設定...")
+        try:
+            # Assuming backend URL is available, e.g., from an environment variable or a common config
+            # For this example, let's use a placeholder. This should ideally come from a robust config mechanism.
+            # In a real setup, app_settings.FASTAPI_BACKEND_URL would be defined.
+            # backend_url = getattr(st.session_state.get("app_settings_module", {}), "FASTAPI_BACKEND_URL", "http://localhost:8000")
+            # Temporarily hardcode for this step, assuming app_settings might not be fully available yet or to avoid circular deps
+            backend_base_url = "http://localhost:8000" # TODO: Replace with proper config access
+
+            # Dynamically import app_settings if not already available in a structured way
+            # This is a bit of a workaround if session_state_manager runs before app.py fully sets up app_settings in session_state
+            app_s = None
+            if "app_settings_module" in st.session_state:
+                app_s = st.session_state.app_settings_module
+            else:
+                try:
+                    from config import app_settings as app_s_direct
+                    app_s = app_s_direct
+                except ImportError:
+                    logger.error("無法直接導入 config.app_settings for backend URL.")
+
+
+            if app_s and hasattr(app_s, 'FASTAPI_BACKEND_URL'):
+                backend_base_url = app_s.FASTAPI_BACKEND_URL
+            else:
+                logger.warning(f"FASTAPI_BACKEND_URL 未在 app_settings 中配置或無法訪問，將使用預設值: {backend_base_url}")
+
+            settings_url = f"{backend_base_url}/api/config/ui_settings"
+            response = requests.get(settings_url, timeout=10)
+            response.raise_for_status()
+            st.session_state.ui_settings = response.json()
+            logger.info(f"成功從後端獲取 UI 設定: {st.session_state.ui_settings}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"無法從後端 ({settings_url}) 獲取UI設定: {e}. 將使用備用預設值。")
+            # Provide fallback default values
+            st.session_state.ui_settings = {
+                "app_name": app_s.APP_NAME if app_s else "Wolf_V5 (Fallback)",
+                "default_gemini_rpm_limit": app_s.DEFAULT_GEMINI_RPM_LIMIT if app_s else 3,
+                "default_gemini_tpm_limit": app_s.DEFAULT_GEMINI_TPM_LIMIT if app_s else 100000,
+                "default_generation_config": app_s.DEFAULT_GENERATION_CONFIG if app_s else {"temperature": 0.7, "top_p": 0.9, "top_k": 32, "max_output_tokens": 8192},
+                "default_main_gemini_prompt": app_s.DEFAULT_MAIN_GEMINI_PROMPT if app_s else "Fallback default prompt",
+                "ny_fed_dataset_names": [item["name"] for item in (app_s.NY_FED_POSITIONS_URLS if app_s else [])],
+                "yfinance_interval_options": app_s.YFINANCE_INTERVAL_OPTIONS if app_s else {"1 Day": "1d"},
+                "allowed_upload_file_types": app_s.ALLOWED_UPLOAD_FILE_TYPES if app_s else ["txt", "csv"],
+                "default_yfinance_tickers": app_s.DEFAULT_YFINANCE_TICKERS if app_s else "SPY",
+                "default_fred_series_ids": app_s.DEFAULT_FRED_SERIES_IDS if app_s else "GDP",
+                "default_yfinance_interval_label": app_s.DEFAULT_YFINANCE_INTERVAL_LABEL if app_s else "1 Day",
+                # Add other UI-specific fallbacks that were in app_settings.py
+                "default_theme": app_s.DEFAULT_THEME if app_s else "Light",
+                "default_font_size_name": app_s.DEFAULT_FONT_SIZE_NAME if app_s else "Medium",
+                "font_size_css_map": app_s.FONT_SIZE_CSS_MAP if app_s else {"Small": "font-small", "Medium": "font-medium", "Large": "font-large"},
+                "text_preview_max_chars": app_s.TEXT_PREVIEW_MAX_CHARS if app_s else 500,
+                "log_display_height": app_s.LOG_DISPLAY_HEIGHT if app_s else 300,
+                "max_ui_log_entries": app_s.MAX_UI_LOG_ENTRIES if app_s else 300,
+                "default_chat_container_height": app_s.DEFAULT_CHAT_CONTAINER_HEIGHT if app_s else 400,
+                "agent_buttons_per_row": app_s.AGENT_BUTTONS_PER_ROW if app_s else 3,
+                "prompts_dir": app_s.PROMPTS_DIR if app_s else "prompts" # Needed for agent buttons
+            }
+            logger.info(f"已應用備用 UI 設定: {st.session_state.ui_settings}")
+        except Exception as e_other: # Catch any other unexpected error during UI settings fetch
+            logger.error(f"獲取UI設定時發生非預期錯誤: {e_other}", exc_info=True)
+            st.session_state.ui_settings = {} # Empty dict to avoid errors, app might be partially functional
+            st.error("無法加載應用程式設定，某些功能可能無法正常運作。")
+
+    logger.info("Session_state 初始化 (包括 UI 設定) 完成。")
 
 if __name__ == "__main__":
     # 這個函數通常在 Streamlit 應用的主腳本頂部被調用
