@@ -13,17 +13,25 @@ from components.sidebar import render_sidebar
 from components.main_page import render_main_page_content
 from components.chat_interface import render_chat
 from components.log_display import render_log_viewer
+from config import app_settings # Import app_settings
 
 # --- 定義日誌檔案路徑 ---
 IN_COLAB = 'google.colab' in sys.modules
 if IN_COLAB:
-    BASE_DATA_DIR = "/content/drive/MyDrive/Wolf_Data" # Changed from MyWolfData
+    # For Colab, construct path using COLAB_DRIVE_BASE_PATH and BASE_DATA_DIR_NAME
+    BASE_DATA_DIR = os.path.join(
+        app_settings.COLAB_DRIVE_BASE_PATH,
+        app_settings.BASE_DATA_DIR_NAME
+    )
 else:
-    # For local non-Colab, also changed to Wolf_Data for consistency
-    BASE_DATA_DIR = os.path.join(os.path.expanduser("~"), "Wolf_Data") # Changed from MyWolfData
+    # For local, construct path using USER_HOME_DIR and BASE_DATA_DIR_NAME
+    BASE_DATA_DIR = os.path.join(
+        os.path.expanduser(app_settings.USER_HOME_DIR),
+        app_settings.BASE_DATA_DIR_NAME
+    )
 
-APP_LOG_DIR = os.path.join(BASE_DATA_DIR, "logs")
-APP_LOG_FILE_PATH = os.path.join(APP_LOG_DIR, "streamlit.log")
+APP_LOG_DIR = os.path.join(BASE_DATA_DIR, app_settings.APP_LOG_DIR_NAME)
+APP_LOG_FILE_PATH = os.path.join(APP_LOG_DIR, "streamlit.log") # Filename can also be a constant
 
 # --- 全局日誌記錄器 ---
 logger = logging.getLogger(__name__)
@@ -33,7 +41,7 @@ def main():
     應用程式主函數。
     """
     # 1. 設定頁面配置
-    st.set_page_config(page_title="Wolf_V5", layout="wide")
+    st.set_page_config(page_title=app_settings.APP_NAME, layout="wide")
 
     # 2. 初始化 Session State (包括 API 金鑰的 Colab Secrets 讀取邏輯)
     initialize_session_state()
@@ -66,14 +74,21 @@ def main():
     load_custom_css("style.css")
     apply_dynamic_css()
 
-    # --- 渲染核心組件 ---
-    try:
-        render_sidebar()
-        render_main_page_content()
-        render_chat()
-        render_log_viewer()
-    except Exception as e:
-        logger.error(f"渲染核心組件時發生嚴重錯誤: {str(e)}", exc_info=True)
+    # --- 導入引導頁面渲染函數 ---
+    from components.onboarding_page import render_onboarding_page
+
+    # --- 引導流程 ---
+    if not st.session_state.get("setup_complete", False):
+        render_onboarding_page()
+    else:
+        # --- 渲染核心組件 ---
+        try:
+            render_sidebar()
+            render_main_page_content()
+            render_chat()
+            render_log_viewer()
+        except Exception as e:
+            logger.error(f"渲染核心組件時發生嚴重錯誤: {str(e)}", exc_info=True)
         st.error(f"應用程式在渲染核心UI組件時遇到問題: {str(e)}")
         st.error("請嘗試刷新頁面. 如果問題持續, 請檢查日誌或聯繫開發者.")
 

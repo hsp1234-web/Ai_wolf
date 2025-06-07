@@ -91,18 +91,131 @@ def call_gemini_api(
         model = genai.GenerativeModel(model_name=selected_model)
         logger.debug(f"Gemini 模型實例化完成: {model}")
 
+        # --- Token Counting and Truncation Logic ---
+        # The 'prompt_parts' list is what we need to count and potentially truncate.
+        # It's already a list of strings/parts.
+
+        # Convert prompt_parts to a format suitable for count_tokens
+        # For simple list of strings, count_tokens can often handle it directly.
+        # If it were a more complex chat history, conversion to glm.Content objects would be needed.
+        contents_for_token_count = [str(p) for p in prompt_parts] # Ensure all parts are strings
+
+        try:
+            token_count_response = model.count_tokens(contents_for_token_count)
+            current_tokens = token_count_response.total_tokens
+            logger.info(f"預計請求 Token 數量 (未截斷前): {current_tokens}")
+        except Exception as e_count_tokens:
+            logger.error(f"計算 Token 數量時出錯: {e_count_tokens}. 將繼續嘗試 API 調用，但可能因 Token 過多而失敗。", exc_info=True)
+            current_tokens = -1 # Indicate error or unknown count
+
+        model_token_limit = model.input_token_limit
+        # Safety factor: use 90% of limit, or limit - N if preferred. Let's use 90%.
+        # Max output tokens in generation_config_dict also plays a role, ensure input is not too close to total limit.
+        # For simplicity, we'll focus on input_token_limit for truncation of input.
+        safety_factor = 0.90
+        # Reserve some tokens for output as well. A fixed number or percentage of input_token_limit.
+        # Let's reserve 10% of limit for output, so effective input limit is 80% if max_output_tokens is large.
+        # Or, more simply, ensure input is < input_token_limit * 0.9.
+        # The user-set max_output_tokens should ideally be respected by the model *after* input.
+        # A common strategy is to ensure input_tokens + max_output_tokens < total_model_capacity.
+        # Here, we simplify and only truncate input based on input_token_limit.
+
+        effective_token_limit = int(model_token_limit * safety_factor)
+        logger.debug(f"模型 '{selected_model}' 的輸入 Token 上限: {model_token_limit}, 安全計算閾值 (x{safety_factor}): {effective_token_limit}")
+
+        if current_tokens != -1 and current_tokens > effective_token_limit:
+            logger.warning(f"Token 數量 {current_tokens} 超過安全閾值 {effective_token_limit}。準備截斷...")
+
+            # Truncation strategy:
+            # Keep first (system prompt, if any) and last (user question) elements.
+            # Remove from the elements in between (document contexts, data summaries).
+            # prompt_parts structure: [system_prompt, doc1_summary, doc2_summary, ..., external_data, user_question]
+
+            num_parts_original = len(contents_for_token_count)
+            if num_parts_original <= 2: # Can't truncate if only system + user_question or less
+                logger.warning(f"無法進一步截斷，只有 {num_parts_original} 部分。API 調用可能因 Token 過多失敗。")
+            else:
+                # Preserve first and last. Truncate from the one before last, then one before that, etc.
+                # Indices to consider for removal: 1 to num_parts_original - 2
+                # We remove from the end of the "middle" section first (i.e. parts that appear earlier in the list)
+
+                # Keep a copy for manipulation
+                truncated_contents = list(contents_for_token_count)
+
+                # Elements to always keep (indices)
+                idx_system_prompt = 0 if num_parts_original > 0 else -1 # Should always exist if prompt_parts is not empty
+                idx_user_question = num_parts_original - 1 if num_parts_original > 0 else -1 # Last element
+
+                # Parts that can be removed (indices in original list): from 1 up to num_parts_original - 2
+                # We'll remove from the start of this removable block.
+                # e.g., if [Sys, Doc1, Doc2, Doc3, UserQ], removable_indices = [1, 2, 3] (Doc1, Doc2, Doc3)
+                # We remove Doc1, then Doc2, then Doc3.
+
+                # We need to reconstruct `contents_for_token_count` from `truncated_contents` at each step.
+                # A simpler way for `prompt_parts` which is a list of strings:
+                # Assume `prompt_parts[0]` is system prompt, `prompt_parts[-1]` is user query.
+                # Middle parts are `prompt_parts[1:-1]`.
+
+                system_prompt_part = [prompt_parts[0]] if len(prompt_parts) > 0 else []
+                user_question_part = [prompt_parts[-1]] if len(prompt_parts) > 1 else [] # if len=1, it's already in system_prompt_part effectively
+
+                middle_parts_to_truncate = list(prompt_parts[len(system_prompt_part):-len(user_question_part)])
+
+                while current_tokens > effective_token_limit and middle_parts_to_truncate:
+                    logger.debug(f"截斷前 middle_parts 數量: {len(middle_parts_to_truncate)}")
+                    middle_parts_to_truncate.pop(0) # Remove the "earliest" middle part
+                    logger.debug(f"截斷後 middle_parts 數量: {len(middle_parts_to_truncate)}")
+
+                    temp_contents = system_prompt_part + middle_parts_to_truncate + user_question_part
+                    contents_for_token_count = [str(p) for p in temp_contents] # Update for recount
+
+                    try:
+                        token_count_response = model.count_tokens(contents_for_token_count)
+                        current_tokens = token_count_response.total_tokens
+                        logger.info(f"截斷後，重新計算的 Token 數量: {current_tokens}")
+                    except Exception as e_recount:
+                        logger.error(f"截斷後重新計算 Token 時出錯: {e_recount}. 停止截斷。", exc_info=True)
+                        current_tokens = -1 # Mark as error
+                        break # Stop truncation
+
+                if current_tokens != -1 and current_tokens > effective_token_limit:
+                     logger.warning(f"即使在截斷中間部分後，Token 數量 ({current_tokens}) 仍可能過高。")
+                elif current_tokens != -1:
+                    logger.info(f"內容已截斷。最終 Token 數量: {current_tokens} (有效上限: {effective_token_limit})")
+
+            if current_tokens == -1 : # Error during token counting
+                 logger.warning("由於Token計數錯誤，將使用原始提示內容進行API調用。")
+                 contents_for_api_call = [str(p) for p in prompt_parts] # Fallback to original
+            else: # Use the (potentially truncated) contents_for_token_count
+                 contents_for_api_call = contents_for_token_count
+        else: # Tokens are within limit or count failed initially
+            contents_for_api_call = contents_for_token_count
+            if current_tokens == -1:
+                 logger.warning("Token計數初始失敗，將使用原始提示內容進行API調用。")
+            else:
+                 logger.info(f"Token 數量 {current_tokens} 在安全閾值 {effective_token_limit} 之內，無需截斷。")
+
+        # --- End of Token Counting and Truncation ---
+
         generation_config_obj = genai.types.GenerationConfig(**generation_config_dict) if generation_config_dict else None
         logger.debug(f"Gemini 生成配置: {generation_config_obj}")
 
-        final_prompt_content = "\n---\n".join(map(str, prompt_parts)) # 使用分隔符連接各部分
-        logger.debug(f"最終發送到 Gemini 的提示詞 (總長度 {len(final_prompt_content)}，前200字符): {final_prompt_content[:200]}...")
-        logger.debug(f"...提示詞尾部 (後100字符): ...{final_prompt_content[-100:]}")
+        # final_prompt_content = "\n---\n".join(map(str, contents_for_api_call)) # Using the potentially truncated list
+        # The generate_content API expects a list of parts (which can be strings)
+        # No need to join them into a single string here if the API handles List[str]
+
+        logger.debug(f"最終發送到 Gemini 的內容部分數量: {len(contents_for_api_call)}")
+        if contents_for_api_call:
+            logger.debug(f"  首部分 (前100字符): {str(contents_for_api_call[0])[:100]}...")
+            if len(contents_for_api_call) > 1:
+                 logger.debug(f"  末部分 (前100字符): {str(contents_for_api_call[-1])[:100]}...")
+
 
         logger.info(f"正在調用 Gemini API (model.generate_content)... 使用快取: {cached_content_name if cached_content_name else '無'}")
         response = model.generate_content(
-            final_prompt_content,
+            contents_for_api_call, # Pass the list of content parts
             generation_config=generation_config_obj,
-            safety_settings=None,
+            safety_settings=None, # Default safety settings
             tools=None,
             tool_config=None,
             cached_content=cached_content_name

@@ -8,9 +8,14 @@ try:
 except ImportError:
     IS_COLAB = False
 from config.app_settings import (
-    available_models,
     DEFAULT_MAIN_GEMINI_PROMPT,
-    font_size_css_map
+    FONT_SIZE_CSS_MAP, # Updated name
+    DEFAULT_GEMINI_RPM_LIMIT,
+    DEFAULT_GEMINI_TPM_LIMIT,
+    DEFAULT_YFINANCE_TICKERS,
+    DEFAULT_FRED_SERIES_IDS,
+    DEFAULT_YFINANCE_INTERVAL_LABEL,
+    DEFAULT_CACHE_TTL_SECONDS # For cache_ttl_seconds_input
 )
 
 logger = logging.getLogger(__name__)
@@ -34,19 +39,21 @@ def initialize_session_state():
     if IS_COLAB:
         logger.info("在 Colab 環境中，嘗試從 userdata 加載 API 金鑰。")
         try:
-            google_api_key_colab = userdata.get('GOOGLE_API_KEY')
-            if google_api_key_colab:
-                st.session_state[api_keys_info['Google Gemini API Key 1']] = google_api_key_colab
-                logger.info("已從 Colab userdata 加載 GOOGLE_API_KEY。")
-            else:
-                logger.info("在 Colab userdata 中未找到 GOOGLE_API_KEY。")
+            if userdata: # 新增的檢查
+                google_api_key_colab = userdata.get('GOOGLE_API_KEY')
+                if google_api_key_colab:
+                    st.session_state[api_keys_info['Google Gemini API Key 1']] = google_api_key_colab
+                    logger.info("已從 Colab userdata 加載 GOOGLE_API_KEY。")
+                else:
+                    logger.info("在 Colab userdata 中未找到 GOOGLE_API_KEY。")
 
-            fred_api_key_colab = userdata.get('FRED_API_KEY')
-            if fred_api_key_colab:
-                st.session_state[api_keys_info['FRED API Key']] = fred_api_key_colab
-                logger.info("已從 Colab userdata 加載 FRED_API_KEY。")
-            else:
-                logger.info("在 Colab userdata 中未找到 FRED_API_KEY。")
+            if userdata: # 新增的檢查
+                fred_api_key_colab = userdata.get('FRED_API_KEY')
+                if fred_api_key_colab:
+                    st.session_state[api_keys_info['FRED API Key']] = fred_api_key_colab
+                    logger.info("已從 Colab userdata 加載 FRED_API_KEY。")
+                else:
+                    logger.info("在 Colab userdata 中未找到 FRED_API_KEY。")
         except Exception as e:
             logger.error(f"從 Colab userdata 加載 API 金鑰時發生錯誤: {e}")
     else:
@@ -56,11 +63,11 @@ def initialize_session_state():
 
     # Gemini 模型設定
     if "initialized_model_settings" not in st.session_state:
-        st.session_state.selected_model_name = available_models[0] if available_models else ""
-        st.session_state.global_rpm_limit = 3  # 示例值
-        st.session_state.global_tpm_limit = 100000  # 示例值
+        st.session_state.selected_model_name = None # Will be populated dynamically
+        st.session_state.global_rpm_limit = DEFAULT_GEMINI_RPM_LIMIT
+        st.session_state.global_tpm_limit = DEFAULT_GEMINI_TPM_LIMIT
         st.session_state.initialized_model_settings = True
-    logger.info("Gemini 模型設定 session_state 初始化完畢。")
+    logger.info("Gemini 模型設定 session_state 初始化完畢 (selected_model_name is None initially)。")
 
     # 主要提示詞設定
     if "initialized_prompt_settings" not in st.session_state:
@@ -83,9 +90,9 @@ def initialize_session_state():
         st.session_state.select_all_sources = False # 新增一個全選/全不選的狀態
         st.session_state.data_start_date = None # 由用戶選擇
         st.session_state.data_end_date = None # 由用戶選擇
-        st.session_state.yfinance_tickers = "SPY, ^GSPC, BTC-USD, ETH-USD"
-        st.session_state.yfinance_interval_label = "1 Day" # 對應 interval_options 的鍵
-        st.session_state.fred_series_ids = "GDP,CPIAUCSL"
+        st.session_state.yfinance_tickers = DEFAULT_YFINANCE_TICKERS
+        st.session_state.yfinance_interval_label = DEFAULT_YFINANCE_INTERVAL_LABEL
+        st.session_state.fred_series_ids = DEFAULT_FRED_SERIES_IDS
         st.session_state.fetched_data_preview = {} # {source_name: pd.DataFrame}
         st.session_state.fetch_errors = {} # {source_name: error_message}
         st.session_state.fetch_data_button_clicked = False
@@ -111,8 +118,8 @@ def initialize_session_state():
 
     # 字體大小設定
     if "initialized_font_settings" not in st.session_state:
-        st.session_state.font_size_name = "Medium" # 例如: "Small", "Medium", "Large"
-        st.session_state.font_size_css_map = font_size_css_map # 存儲映射以便 CSS utils 使用
+        st.session_state.font_size_name = "Medium" # Default size name
+        st.session_state.font_size_css_map = FONT_SIZE_CSS_MAP # Use the constant
         st.session_state.initialized_font_settings = True
     logger.info("字體大小設定 session_state 初始化完畢。")
 
@@ -132,10 +139,26 @@ def initialize_session_state():
     if "cache_content_input" not in st.session_state:
         st.session_state.cache_content_input = ""
     if "cache_ttl_seconds_input" not in st.session_state:
-        st.session_state.cache_ttl_seconds_input = 0 # 0 表示不過期
+        st.session_state.cache_ttl_seconds_input = DEFAULT_CACHE_TTL_SECONDS # Use the constant
     if "cache_name_to_delete_input" not in st.session_state:
         st.session_state.cache_name_to_delete_input = ""
     logger.info("Gemini 內容快取管理輸入字段 session_state 初始化完畢。")
+
+    if "setup_complete" not in st.session_state:
+        st.session_state.setup_complete = False
+        logger.info("使用者引導狀態 (setup_complete) 已初始化為 False。")
+
+    if "current_agent_prompt" not in st.session_state:
+        st.session_state.current_agent_prompt = ""
+        logger.info("Agent 提示詞狀態 (current_agent_prompt) 已初始化。")
+
+    # Colab Drive 掛載提示相關
+    if "show_drive_mount_prompt" not in st.session_state:
+        st.session_state.show_drive_mount_prompt = False
+        logger.info("Colab Drive 掛載提示 (show_drive_mount_prompt) 已初始化為 False。")
+    if "drive_path_requested" not in st.session_state:
+        st.session_state.drive_path_requested = ""
+        logger.info("Colab Drive 掛載路徑請求 (drive_path_requested) 已初始化為空字串。")
 
     st.session_state.initialized_keys = True
     logger.info("Session_state 初始化完成。")
