@@ -1,0 +1,11 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv>=1.0.0
+google-generativeai>=0.3.0 # 根據現有 services/gemini_service.py
+yfinance>=0.2.0 # 根據現有 services/data_fetchers.py
+fredapi>=0.5.0 # 根據現有 services/data_fetchers.py
+pandas>=1.5.0 # 通用依賴
+requests>=2.28.0 # 根據現有 services/data_fetchers.py
+lxml>=4.9.0 # 根據現有 services/data_fetchers.py (for pd.read_xml)
+openpyxl>=3.0.0 # 根據現有 services/data_fetchers.py (for Excel)
+# 根據需要添加其他可能的依賴
