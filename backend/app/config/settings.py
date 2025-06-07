@@ -8,11 +8,14 @@ APP_NAME = "Ai_wolf Backend"
 APP_VERSION = "0.1.0" # Application version
 LOG_LEVEL = logging.INFO # Default log level for the application
 # To change log level via environment variable, you could use:
-# LOG_LEVEL_STR = os.getenv("LOG_LEVEL", "INFO").upper()
-# LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+LOG_LEVEL_STR = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+LOG_FILE = os.getenv("LOG_FILE") # If None, logging might go to stderr or as configured by root logger
+LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", 1024 * 1024 * 10)) # Default 10MB
+LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", 5)) # Default 5 backup files
 
 
-# --- API Key Loading ---
+# --- API Key and Path Loading ---
 # Path to the .env file (expected to be in the 'backend' directory, one level up from 'app')
 # settings.py is in backend/app/config/
 # .env is in backend/
@@ -23,18 +26,15 @@ LOG_LEVEL = logging.INFO # Default log level for the application
 DOTENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
 load_dotenv(DOTENV_PATH)
 
-# Gemini API Keys
-GEMINI_API_KEY_1 = os.getenv("GEMINI_API_KEY_1")
-GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2")
-GEMINI_API_KEY_3 = os.getenv("GEMINI_API_KEY_3") # Assuming up to 5 keys as per .env.example logic
-GEMINI_API_KEY_4 = os.getenv("GEMINI_API_KEY_4")
-GEMINI_API_KEY_5 = os.getenv("GEMINI_API_KEY_5")
+# Database and File Paths
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./AI_data/main_database.db")
+AI_DATA_PATH = os.getenv("AI_DATA_PATH", "./AI_data")
+BACKUP_PATH = os.getenv("BACKUP_PATH", "./AI_data/backups")
 
-AVAILABLE_GEMINI_API_KEYS = [
-    key for key in [
-        GEMINI_API_KEY_1, GEMINI_API_KEY_2, GEMINI_API_KEY_3, GEMINI_API_KEY_4, GEMINI_API_KEY_5
-    ] if key
-]
+# Gemini API Keys
+# Loads a comma-separated string of keys from .env and splits them into a list
+GEMINI_API_KEYS_STR = os.getenv("GEMINI_API_KEYS", "")
+AVAILABLE_GEMINI_API_KEYS = [key.strip() for key in GEMINI_API_KEYS_STR.split(',') if key.strip()]
 
 # FRED API Key
 FRED_API_KEY = os.getenv("FRED_API_KEY")
@@ -100,8 +100,6 @@ SBP_XML_SUM_COLS_CONFIG = {
 
 # Add other backend-specific settings here as needed
 # For example:
-# LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO") # This is one way to set it from .env
-# DATABASE_URL = os.getenv("DATABASE_URL")
 # MAX_FILE_UPLOAD_SIZE_MB = 100
 # CORS_ORIGINS = ["http://localhost:3000", "http://localhost:8501"] # If frontend is served from these
 ALLOWED_ORIGINS = [

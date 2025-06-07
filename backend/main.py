@@ -1,3 +1,4 @@
+import os # For path creation
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware # Added for CORS
 import uvicorn
@@ -19,6 +20,9 @@ setup_logging(log_level=settings.LOG_LEVEL, log_file_path=LOG_FILE_PATH)
 
 # Get a logger for this module AFTER setup_logging has run
 logger = logging.getLogger(__name__)
+
+# Import database initialization function
+from app.db.init_db import create_tables
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -44,7 +48,30 @@ async def startup_event():
     logger.info(f"應用程式 {settings.APP_NAME} v{settings.APP_VERSION} 啟動...")
     logger.info(f"日誌級別設定為: {logging.getLevelName(settings.LOG_LEVEL)}")
     logger.info(f"日誌檔案路徑: {LOG_FILE_PATH}")
-    # You can add other startup logic here, e.g., DB connections, loading models
+
+    # Create necessary directories if they don't exist
+    try:
+        if settings.AI_DATA_PATH:
+            os.makedirs(settings.AI_DATA_PATH, exist_ok=True)
+            logger.info(f"Ensured AI data directory exists: {settings.AI_DATA_PATH}")
+        if settings.BACKUP_PATH:
+            os.makedirs(settings.BACKUP_PATH, exist_ok=True)
+            logger.info(f"Ensured backup directory exists: {settings.BACKUP_PATH}")
+    except OSError as e:
+        logger.error(f"Error creating directories: {e}")
+        # Depending on the criticality, you might want to raise an exception or exit
+        raise
+
+    # Initialize database tables
+    try:
+        await create_tables()
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database tables: {e}")
+        # Depending on the criticality, you might want to raise an exception or exit
+        raise
+
+    # You can add other startup logic here, e.g., loading models
 
 # Include API routers
 app.include_router(endpoints_config.router, prefix="/api", tags=["Configuration"])
@@ -52,6 +79,10 @@ from app.api import endpoints_data # Import the data router
 app.include_router(endpoints_data.router, prefix="/api/data", tags=["Data Fetching"]) # Mount at /api/data
 from app.api import endpoints_chat # Import the chat router
 app.include_router(endpoints_chat.router, prefix="/api", tags=["Chat"]) # Mount at /api
+from app.api import endpoints_files # Import the files router
+app.include_router(endpoints_files.router, prefix="/api/files", tags=["Files"]) # Mount at /api/files
+from app.api import endpoints_db # Import the database router
+app.include_router(endpoints_db.router, prefix="/api/db", tags=["Database"]) # Mount at /api/db
 
 @app.get("/")
 async def read_root():
