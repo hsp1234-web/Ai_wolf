@@ -2,16 +2,20 @@
 import streamlit as st
 import logging
 import pandas as pd # For displaying DataFrame previews
+import os # Ensure os is imported for path operations
+# Import the new helper function
+from components.chat_interface import add_message_and_process
+# Import for Colab Drive path checking
+from services.file_processors import handle_file_uploads, ensure_colab_drive_mount_if_needed
 import os
 import sys
-from services.file_processors import handle_file_uploads
 from services.data_fetchers import (
     fetch_yfinance_data,
     fetch_fred_data,
     fetch_ny_fed_data
 )
 from config.api_keys_config import api_keys_info # For checking Gemini keys
-from config.app_settings import interval_options as yf_interval_options # yfinance intervals
+from config import app_settings # Import the whole module for constants
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,25 @@ def render_main_page_content():
     """
     logger.info("主頁面：開始渲染主要內容 (render_main_page_content)。")
 
+    # --- Handle Colab Drive Mount Prompt ---
+    # This should be near the top to potentially block other rendering or inform user early.
+    if st.session_state.get("show_drive_mount_prompt", False):
+        path_requested = st.session_state.get("drive_path_requested", "指定的路徑")
+        st.warning(
+            f"⚠️ **Google Drive 路徑未掛載或不可用**\n\n"
+            f"應用程式需要存取 Google Drive 上的路徑 '{path_requested}'，但該路徑目前無法訪問。\n\n"
+            "如果您正在 Colab 環境中運行此應用程式，請執行筆記本中的 Google Drive 掛載儲存格，然後點擊下方的「重試檔案存取」按鈕。",
+            icon="📁"
+        )
+        if st.button("🔄 重試檔案存取", key="drive_retry_button"):
+            st.session_state.show_drive_mount_prompt = False # Clear the flag
+            # We don't need to set drive_path_requested to "" here,
+            # ensure_colab_drive_mount_if_needed will re-check and re-set if still not mounted.
+            logger.info("用戶點擊 '重試檔案存取' 按鈕。重新運行頁面。")
+            st.rerun()
+        # Optionally, you might want to stop further rendering of components that depend on this path
+        # For now, the check before os.walk will handle not trying to access it.
+
     # --- Initialize session state for this page if not already done ---
     if "selected_core_documents" not in st.session_state:
         st.session_state.selected_core_documents = []
@@ -38,6 +61,53 @@ def render_main_page_content():
         logger.debug("主頁面：'wolf_data_file_map' 初始化為空字典。")
 
     st.title("金融分析與洞察助理 (由 Gemini 驅動)")
+
+    # --- Agent 快捷任務 ---
+    st.subheader("🤖 Agent 快捷任務")
+    # prompts_dir = "prompts" # Replaced by app_settings.PROMPTS_DIR
+    agent_prompt_files = []
+    if os.path.exists(app_settings.PROMPTS_DIR) and os.path.isdir(app_settings.PROMPTS_DIR):
+        try:
+            agent_prompt_files = sorted([
+                f for f in os.listdir(app_settings.PROMPTS_DIR)
+                if f.startswith("agent_") and f.endswith(".txt")
+            ]) # Sort for consistent order
+        except Exception as e:
+            logger.error(f"主頁面：讀取 prompts 目錄 '{app_settings.PROMPTS_DIR}' 時發生錯誤: {e}")
+            st.error(f"無法讀取 Agent 任務列表: {e}")
+
+    if not agent_prompt_files:
+        st.info(f"目前沒有可用的 Agent 快捷任務。請在 '{app_settings.PROMPTS_DIR}' 文件夾下添加 'agent_*.txt' 文件。")
+    else:
+        # Determine number of columns, e.g., 3 or 4 per row
+        num_cols = min(len(agent_prompt_files), 3) # Max 3 buttons per row, or fewer if less files
+        cols = st.columns(num_cols)
+        for i, prompt_file in enumerate(agent_prompt_files):
+            button_label = prompt_file.replace("agent_", "").replace(".txt", "").replace("_", " ").title()
+            # Use session state to manage button clicks to avoid issues with st.rerun if called from elsewhere
+            button_key = f"agent_button_{prompt_file}"
+
+            if cols[i % num_cols].button(button_label, key=button_key):
+                logger.info(f"主頁面：Agent 按鈕 '{button_label}' 被點擊。")
+                try:
+                    with open(os.path.join(app_settings.PROMPTS_DIR, prompt_file), "r", encoding="utf-8") as f:
+                        prompt_content = f.read()
+
+                    # Store the raw prompt. It will be cleared by add_message_and_process if from_agent is True.
+                    st.session_state.current_agent_prompt = prompt_content
+
+                    logger.info(f"Agent 任務 '{button_label}' 的提示詞已載入。調用 add_message_and_process。")
+
+                    # Call the helper function from chat_interface.py
+                    add_message_and_process(prompt_content, from_agent=True)
+
+                    # Toast is good, st.rerun() is handled by add_message_and_process
+                    st.toast(f"Agent 任務 '{button_label}' 已觸發。", icon="🤖")
+
+                except Exception as e:
+                    st.error(f"載入 Agent 提示詞 '{prompt_file}' 失敗: {e}")
+                    logger.error(f"載入 Agent 提示詞 '{prompt_file}' 失敗: {e}")
+    st.markdown("---") # 分隔線
 
     # --- API 金鑰缺失警告 ---
     if not _are_gemini_keys_set():
@@ -107,28 +177,54 @@ def render_main_page_content():
     logger.debug("主頁面：渲染核心分析文件選擇區域。")
 
     # --- Wolf_Data/source_documents/ 文件掃描邏輯 ---
-    IN_COLAB_MAIN_PAGE = 'google.colab' in sys.modules
-    WOLF_DATA_ROOT_COLAB = "/content/drive/MyDrive/Wolf_Data/source_documents/"
-    WOLF_DATA_ROOT_LOCAL = os.path.join(os.path.expanduser("~"), "Wolf_Data", "source_documents")
-    wolf_data_source_path_to_scan = WOLF_DATA_ROOT_COLAB if IN_COLAB_MAIN_PAGE else WOLF_DATA_ROOT_LOCAL
+    IN_COLAB_MAIN_PAGE = 'google.colab' in sys.modules # Local check for Colab
+
+    # Construct paths using constants from app_settings
+    if IN_COLAB_MAIN_PAGE:
+        wolf_data_source_path_to_scan = os.path.join(
+            app_settings.COLAB_DRIVE_BASE_PATH,
+            app_settings.BASE_DATA_DIR_NAME,
+            app_settings.SOURCE_DOCUMENTS_DIR_NAME
+        )
+    else:
+        wolf_data_source_path_to_scan = os.path.join(
+            os.path.expanduser(app_settings.USER_HOME_DIR),
+            app_settings.BASE_DATA_DIR_NAME,
+            app_settings.SOURCE_DOCUMENTS_DIR_NAME
+        )
+
+    can_scan_wolf_data = True
+    if IN_COLAB_MAIN_PAGE: # Only call ensure_colab_drive_mount_if_needed if in Colab and path is for Colab
+        # ensure_colab_drive_mount_if_needed expects the specific path to check,
+        # which is wolf_data_source_path_to_scan when in Colab.
+        if not ensure_colab_drive_mount_if_needed(wolf_data_source_path_to_scan):
+            can_scan_wolf_data = False
+            logger.info(f"主頁面：ensure_colab_drive_mount_if_needed 返回 False for '{wolf_data_source_path_to_scan}'. 跳過掃描。")
+            # The prompt will be shown at the top of the page.
+            # We should ensure wolf_data_file_map is empty if we can't scan.
+            st.session_state.wolf_data_file_map = {}
+
 
     display_name_to_path = {}
-    if os.path.exists(wolf_data_source_path_to_scan):
+    # Only proceed with scanning if the path is considered valid (or not a Colab path needing mount)
+    if can_scan_wolf_data and os.path.exists(wolf_data_source_path_to_scan):
         logger.info(f"主頁面：開始掃描 Wolf_Data 目錄: {wolf_data_source_path_to_scan}")
         for root, _, files in os.walk(wolf_data_source_path_to_scan):
             for file in files:
-                if file.endswith((".txt", ".md")): # 只包含 .txt 和 .md 文件
+                if file.endswith((".txt", ".md")):
                     full_path = os.path.join(root, file)
-                    # 創建相對於 source_documents 的相對路徑作為顯示名稱
                     relative_path = os.path.relpath(full_path, wolf_data_source_path_to_scan)
                     display_name_to_path[relative_path] = full_path
         st.session_state.wolf_data_file_map = display_name_to_path
         logger.info(f"主頁面：掃描到 {len(display_name_to_path)} 個文件從 Wolf_Data。")
-    else:
-        logger.warning(f"主頁面：Wolf_Data 目錄 '{wolf_data_source_path_to_scan}' 不存在。")
-        st.session_state.wolf_data_file_map = {} # 確保是空字典
+    elif can_scan_wolf_data and not os.path.exists(wolf_data_source_path_to_scan):
+        # This case handles if not IN_COLAB_MAIN_PAGE and local path doesn't exist,
+        # or if ensure_colab_drive_mount_if_needed passed but path still somehow not found (less likely for Colab)
+        logger.warning(f"主頁面：Wolf_Data 目錄 '{wolf_data_source_path_to_scan}' 不存在 (can_scan_wolf_data was True)。")
+        st.session_state.wolf_data_file_map = {}
+    # If can_scan_wolf_data is False, wolf_data_file_map is already set to {} above.
 
-    multiselect_options_wolf = list(st.session_state.wolf_data_file_map.keys())
+    multiselect_options_wolf = list(st.session_state.get("wolf_data_file_map", {}).keys())
 
     # --- 已上傳文件列表 (作為備選或補充) ---
     # 保持 uploaded_files_list 的可用性，但優先顯示 Wolf_Data 的文件
@@ -245,8 +341,8 @@ def render_main_page_content():
                 old_yf_interval = st.session_state.get("yfinance_interval_label", "1 Day")
                 new_yf_interval = st.selectbox(
                     "yfinance 數據週期:",
-                    options=list(yf_interval_options.keys()),
-                    index=list(yf_interval_options.keys()).index(old_yf_interval) if old_yf_interval in yf_interval_options else 0,
+                    options=list(app_settings.YFINANCE_INTERVAL_OPTIONS.keys()),
+                    index=list(app_settings.YFINANCE_INTERVAL_OPTIONS.keys()).index(old_yf_interval) if old_yf_interval in app_settings.YFINANCE_INTERVAL_OPTIONS else 0,
                     key="main_yfinance_interval"
                 )
                 if new_yf_interval != old_yf_interval:
@@ -254,7 +350,7 @@ def render_main_page_content():
                     logger.debug(f"主頁面：yfinance interval 更改為 '{new_yf_interval}'")
         with param_col2:
             if st.session_state.get("select_fred"):
-                old_fred_ids = st.session_state.get("fred_series_ids", "")
+                old_fred_ids = st.session_state.get("fred_series_ids", app_settings.DEFAULT_FRED_SERIES_IDS) # Use default from settings
                 new_fred_ids = st.text_input("FRED Series IDs (逗號分隔):", value=old_fred_ids, key="main_fred_ids")
                 if new_fred_ids != old_fred_ids:
                     st.session_state.fred_series_ids = new_fred_ids
@@ -262,7 +358,7 @@ def render_main_page_content():
 
         if st.button("🔍 獲取並預覽選定數據", key="main_fetch_data_button"):
             logger.info("主頁面：用戶點擊 '獲取並預覽選定數據' 按鈕。")
-            st.session_state.fetch_data_button_clicked = True # 標記按鈕已被點擊
+            st.session_state.fetch_data_button_clicked = True
             st.session_state.fetched_data_preview = {}
             st.session_state.fetch_errors = {}
 
@@ -275,10 +371,11 @@ def render_main_page_content():
                     st.toast("⏳ 正在從外部源獲取數據，請耐心等候...", icon="⏳")
                     logger.debug("主頁面：開始獲取所選外部數據。")
                     if st.session_state.get("select_yfinance"):
-                        actual_yf_interval = yf_interval_options[st.session_state.yfinance_interval_label]
-                        logger.info(f"主頁面：準備調用 fetch_yfinance_data。Tickers: {st.session_state.yfinance_tickers}, Start: {st.session_state.data_start_date}, End: {st.session_state.data_end_date}, Interval: {actual_yf_interval}")
+                        actual_yf_interval = app_settings.YFINANCE_INTERVAL_OPTIONS[st.session_state.yfinance_interval_label]
+                        current_yf_tickers = st.session_state.get("yfinance_tickers", app_settings.DEFAULT_YFINANCE_TICKERS) # Use default
+                        logger.info(f"主頁面：準備調用 fetch_yfinance_data。Tickers: {current_yf_tickers}, Start: {st.session_state.data_start_date}, End: {st.session_state.data_end_date}, Interval: {actual_yf_interval}")
                         yf_data, yf_errs = fetch_yfinance_data(
-                            st.session_state.yfinance_tickers, st.session_state.data_start_date,
+                            current_yf_tickers, st.session_state.data_start_date,
                             st.session_state.data_end_date, actual_yf_interval
                         )
                         if yf_data: st.session_state.fetched_data_preview["yfinance"] = yf_data
