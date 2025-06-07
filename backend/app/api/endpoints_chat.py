@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 
-from app.services import prompt_builder, gemini_service, model_catalog
+from app.services import prompt_builder, gemini_service, model_catalog, file_service # Added file_service
 from app.config import settings
+from app.config.settings import AI_DATA_PATH # Added AI_DATA_PATH
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -15,14 +16,13 @@ class ChatMessage(BaseModel):
     role: str = Field(..., description="訊息角色 ('user' 或 'model')")
     parts: List[str] = Field(..., description="訊息內容的多個部分")
 
-class UploadedFile(BaseModel):
-    name: str = Field(..., description="檔案名稱")
-    content: str = Field(..., description="檔案的文本內容") # Assume text content for now
+# Removed UploadedFile model as it's replaced by uploadedFileInfo
 
 class ChatRequest(BaseModel):
     userInput: str
     chatHistory: Optional[List[ChatMessage]] = None
-    uploadedFileContents: Optional[List[UploadedFile]] = None
+    # uploadedFileContents: Optional[List[UploadedFile]] = None # Replaced
+    uploadedFileInfo: Optional[List[Dict[str,str]]] = Field(None, description="上傳檔案的資訊列表，格式: [{'file_id': '...', 'file_name': '...'}, ...]")
     externalDataSummaries: Optional[Dict[str, Any]] = Field(None, description="客戶端已獲取並摘要的外部數據")
     selectedModelName: Optional[str] = None
     systemPromptOverride: Optional[str] = None
@@ -64,10 +64,40 @@ async def handle_chat_request(request: ChatRequest = Body(...)):
         logger.debug(f"使用的系統提示詞 (前100字符): {system_prompt_to_use[:100]}...")
 
         # 4. Prepare uploaded file contents
-        core_docs_for_builder = None
-        if request.uploadedFileContents:
-            core_docs_for_builder = [{"name": f.name, "content": f.content} for f in request.uploadedFileContents]
-            logger.info(f"處理 {len(core_docs_for_builder)} 個上傳的文件內容。")
+        core_docs_for_builder = [] # Initialize as empty list
+        if request.uploadedFileInfo:
+            logger.info(f"Processing {len(request.uploadedFileInfo)} uploaded file(s) information.")
+            for file_info in request.uploadedFileInfo:
+                file_id = file_info.get("file_id")
+                file_name = file_info.get("file_name")
+
+                if not file_id or not file_name:
+                    logger.warning(f"Skipping a file due to missing file_id or file_name in uploadedFileInfo: {file_info}")
+                    # Optionally, communicate this back to the user if possible/needed
+                    continue
+
+                try:
+                    logger.debug(f"Attempting to read content for file_id: {file_id}, file_name: {file_name}")
+                    # Assuming file content should be read as text (UTF-8)
+                    content_str = await file_service.get_uploaded_file_content(
+                        file_id=file_id,
+                        file_name=file_name,
+                        base_upload_dir=AI_DATA_PATH,
+                        mode='r' # Read as text
+                    )
+                    if content_str is not None:
+                        core_docs_for_builder.append({"name": file_name, "content": content_str})
+                        logger.info(f"Successfully read and added content for: {file_name} (ID: {file_id})")
+                    else:
+                        logger.warning(f"Failed to read content for file: {file_name} (ID: {file_id}). File not found or empty.")
+                        # Optionally, add a notice to the user or error log that a file was not processed
+                except Exception as e:
+                    logger.error(f"Error reading file {file_name} (ID: {file_id}): {e}", exc_info=True)
+                    # Optionally, add a notice to the user
+
+            if not core_docs_for_builder: # If list is empty after processing
+                 logger.info("No file contents were successfully processed from uploadedFileInfo.")
+                 # core_docs_for_builder will be an empty list, which is fine for prompt_builder
 
         # 5. Prepare chat history
         chat_history_for_builder = None

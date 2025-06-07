@@ -52,7 +52,7 @@ async def fetch_data_endpoint(request: DataFetchRequest = Body(...)):
         if request.yfinance:
             logger.info(f"正在獲取 YFinance 數據: Tickers='{request.yfinance.tickers}', Interval='{request.yfinance.interval}'")
             try:
-                yf_data, yf_errors = data_fetchers.fetch_yfinance_data(
+                yf_data, yf_errors = await data_fetchers.fetch_yfinance_data(
                     tickers_str=request.yfinance.tickers,
                     start_date_str=request.startDate,
                     end_date_str=request.endDate,
@@ -75,11 +75,11 @@ async def fetch_data_endpoint(request: DataFetchRequest = Body(...)):
                 response_errors.setdefault("fred", []).append("FRED API 金鑰未在後端設定。")
             else:
                 try:
-                    fred_data, fred_errors = data_fetchers.fetch_fred_data(
+                    # api_key is no longer passed as it's handled by fetch_fred_data internally via settings
+                    fred_data, fred_errors = await data_fetchers.fetch_fred_data(
                         series_ids_str=request.fred.seriesIds,
                         start_date_str=request.startDate,
-                        end_date_str=request.endDate,
-                        api_key=FRED_API_KEY
+                        end_date_str=request.endDate
                     )
                     # Convert DataFrame to JSON serializable format
                     response_data["fred"] = {sid: df.to_dict(orient="records") for sid, df in fred_data.items()}

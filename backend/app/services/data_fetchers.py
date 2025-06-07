@@ -1,5 +1,4 @@
 # services/data_fetchers.py
-# import streamlit as st # Removed Streamlit import
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
@@ -7,18 +6,55 @@ from fredapi import Fred
 import requests
 import io
 import logging
+import json # For serializing/deserializing DataFrames
+
 # Assuming app_settings.py contents are moved to backend/app/config/settings.py
+from ..config import settings # Import the whole settings module
 from ..config.settings import NY_FED_POSITIONS_URLS, SBP_XML_SUM_COLS_CONFIG
 from ..config.settings import YFINANCE_CACHE_TTL_SECONDS, FRED_CACHE_TTL_SECONDS, NY_FED_REQUEST_TIMEOUT_SECONDS
 
+# Import cache utility functions
+from ..db.cache_manager import generate_cache_key, get_cached_data, set_cached_data
 
 logger = logging.getLogger(__name__)
 
-# @st.cache_data(ttl=YFINANCE_CACHE_TTL_SECONDS) # Decorator removed
-def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str, interval: str):
+# Helper function for DataFrame serialization
+def serialize_dataframes(data_frames: dict) -> dict:
+    serialized = {}
+    for ticker, df in data_frames.items():
+        if isinstance(df, pd.DataFrame):
+            serialized[ticker] = df.to_json(orient='split', date_format='iso')
+        else: # Handle cases where df might not be a DataFrame (e.g., error placeholders)
+            serialized[ticker] = df
+    return serialized
+
+# Helper function for DataFrame deserialization
+def deserialize_dataframes(serialized_data: dict) -> dict:
+    deserialized = {}
+    for ticker, json_str in serialized_data.items():
+        try:
+            # Attempt to read as DataFrame if it's a string (JSON)
+            if isinstance(json_str, str):
+                 # Ensure correct handling of date columns, common in financial data
+                df = pd.read_json(io.StringIO(json_str), orient='split')
+                # Attempt to convert known date columns, like 'Date' or 'Datetime'
+                for col_name in ['Date', 'Datetime', 'Timestamp', 'time', 'DATE', 'DATETIME']:
+                    if col_name in df.columns:
+                        try:
+                            df[col_name] = pd.to_datetime(df[col_name], errors='coerce')
+                        except Exception: # Broad exception if conversion fails for any reason
+                            pass # Keep original if conversion fails
+                deserialized[ticker] = df
+            else: # If not a string, assume it's already in a usable format (e.g. error message)
+                deserialized[ticker] = json_str
+        except Exception as e:
+            logger.warning(f"Failed to deserialize DataFrame for {ticker}: {e}. Storing as is.")
+            deserialized[ticker] = json_str # Store as is if deserialization fails
+    return deserialized
+
+async def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str, interval: str):
     """
-    從 Yahoo Finance 獲取指定股票代碼的歷史數據。
-    # TODO: Implement caching for this function in the API layer or via a dedicated caching library.
+    從 Yahoo Finance 獲取指定股票代碼的歷史數據，帶有數據庫快取。
 
     Args:
         tickers_str (str): 以逗號分隔的股票代碼字符串。
@@ -31,8 +67,24 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
                data_frames (dict): 包含每個股票代碼 DataFrame 的字典。
                errors (list): 獲取數據過程中發生的錯誤列表。
     """
-    logger.info(f"開始執行 fetch_yfinance_data。參數 - Tickers: '{tickers_str}', 開始日期: {start_date_str}, 結束日期: {end_date_str}, 間隔: '{interval}'")
-    # Note: YFINANCE_CACHE_TTL_SECONDS is imported but not used here as caching is removed.
+    logger.info(f"Executing fetch_yfinance_data with params - Tickers: '{tickers_str}', Start: {start_date_str}, End: {end_date_str}, Interval: '{interval}'")
+
+    cache_key = generate_cache_key(
+        prefix="yfinance",
+        tickers=tickers_str,
+        start=start_date_str,
+        end=end_date_str,
+        interval=interval
+    )
+
+    cached_result = await get_cached_data(cache_key)
+    if cached_result:
+        logger.info(f"YFinance cache hit for key: {cache_key}")
+        # Data in cache is {'data': serialized_dfs, 'errors': errors_list}
+        deserialized_dfs = deserialize_dataframes(cached_result.get('data', {}))
+        return deserialized_dfs, cached_result.get('errors', [])
+
+    logger.info(f"YFinance cache miss for key: {cache_key}. Fetching from API.")
     data_frames = {}
     errors = []
 
@@ -40,6 +92,8 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
         msg = "YFinance 錯誤：Ticker 字串不可為空。"
         errors.append(msg)
         logger.error(msg)
+        # Cache the error state as well
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=YFINANCE_CACHE_TTL_SECONDS)
         return data_frames, errors
 
     list_of_tickers = [ticker.strip().upper() for ticker in tickers_str.split(',') if ticker.strip()]
@@ -47,8 +101,9 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
         msg = "YFinance 錯誤：未提供有效的 Ticker。"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=YFINANCE_CACHE_TTL_SECONDS)
         return data_frames, errors
-    logger.debug(f"已解析的 YFinance Ticker 列表: {list_of_tickers}")
+    logger.debug(f"Parsed YFinance Tickers: {list_of_tickers}")
 
     try:
         start_dt = datetime.strptime(start_date_str, "%Y%m%d")
@@ -56,6 +111,7 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
         msg = f"YFinance 錯誤：開始日期格式無效 '{start_date_str}'。應為 YYYYMMDD。詳細錯誤: {e_start}"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=YFINANCE_CACHE_TTL_SECONDS)
         return data_frames, errors
     try:
         end_dt = datetime.strptime(end_date_str, "%Y%m%d")
@@ -63,17 +119,20 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
         msg = f"YFinance 錯誤：結束日期格式無效 '{end_date_str}'。應為 YYYYMMDD。詳細錯誤: {e_end}"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=YFINANCE_CACHE_TTL_SECONDS)
         return data_frames, errors
 
     if start_dt > end_dt:
         msg = f"YFinance 錯誤：開始日期 ({start_date_str}) 不能晚於結束日期 ({end_date_str})。"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=YFINANCE_CACHE_TTL_SECONDS)
         return data_frames, errors
 
     for ticker in list_of_tickers:
-        logger.info(f"開始下載 YFinance ticker: '{ticker}' (日期範圍: {start_date_str} - {end_date_str}, 間隔: {interval})")
+        logger.info(f"Downloading YFinance ticker: '{ticker}' (Range: {start_date_str}-{end_date_str}, Interval: {interval})")
         try:
+            # yf.download is synchronous, consider running in a thread pool for async context if it becomes a bottleneck
             df = yf.download(ticker, start=start_dt, end=end_dt, interval=interval, progress=False)
             if df.empty:
                 msg = f"YFinance 警告：Ticker '{ticker}' 在指定日期範圍內沒有找到數據。"
@@ -81,67 +140,88 @@ def fetch_yfinance_data(tickers_str: str, start_date_str: str, end_date_str: str
                 logger.warning(msg)
             else:
                 df.reset_index(inplace=True)
-                # 處理 yfinance 可能返回 MultiIndex 的情況
                 if isinstance(df.columns, pd.MultiIndex):
-                    logger.info(f"YFinance ticker '{ticker}': 檢測到 MultiIndex 列，正在進行扁平化處理。原始列: {df.columns.tolist()}")
-                    # 確保列名中的每個元素都是字符串，然後再連接
+                    logger.info(f"YFinance ticker '{ticker}': Flattening MultiIndex columns. Original: {df.columns.tolist()}")
                     df.columns = ['_'.join(map(str, col)).strip() if isinstance(col, tuple) else str(col).strip() for col in df.columns.values]
-                    logger.info(f"YFinance ticker '{ticker}': MultiIndex 列已扁平化。處理後列: {df.columns.tolist()}")
+                    logger.info(f"YFinance ticker '{ticker}': Flattened columns: {df.columns.tolist()}")
                 else:
                     df.columns = df.columns.astype(str)
 
+                # Convert known date columns to ISO format string before serialization with df.to_json
+                # This is implicitly handled by df.to_json(date_format='iso')
                 data_frames[ticker] = df
-                logger.info(f"成功下載 YFinance ticker '{ticker}' 的數據，共 {len(df)} 行。")
+                logger.info(f"Successfully downloaded YFinance ticker '{ticker}', {len(df)} rows.")
         except Exception as e:
             msg = f"YFinance 錯誤：下載 Ticker '{ticker}' 數據時發生錯誤: {type(e).__name__} - {str(e)}"
             errors.append(msg)
             logger.error(msg, exc_info=True)
 
-    logger.info(f"YFinance 數據獲取流程結束。成功獲取 {len(data_frames)} 個 Ticker 的數據。共發生 {len(errors)} 個錯誤/警告。")
+    serialized_dfs = serialize_dataframes(data_frames)
+    await set_cached_data(cache_key, {"data": serialized_dfs, "errors": errors}, ttl_seconds=YFINANCE_CACHE_TTL_SECONDS)
+
+    logger.info(f"YFinance data fetching complete. Fetched {len(data_frames)} tickers. Errors/Warnings: {len(errors)}.")
     return data_frames, errors
 
-# @st.cache_data(ttl=FRED_CACHE_TTL_SECONDS) # Decorator removed
-def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str, api_key: str):
+async def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str):
     """
-    從 FRED (Federal Reserve Economic Data) 獲取指定經濟序列的數據。日誌記錄已添加。
-    # TODO: Implement caching for this function in the API layer or via a dedicated caching library.
+    從 FRED (Federal Reserve Economic Data) 獲取指定經濟序列的數據，帶有數據庫快取。
+    API 金鑰從 settings.FRED_API_KEY 讀取。
 
     Args:
         series_ids_str (str): 以逗號分隔的 FRED Series ID 字符串。
         start_date_str (str): 開始日期字符串 (YYYYMMDD)。
         end_date_str (str): 結束日期字符串 (YYYYMMDD)。
-        api_key (str): FRED API 金鑰。
 
     Returns:
         tuple: (data_series_dict, errors)
                data_series_dict (dict): 包含每個 Series ID DataFrame 的字典。
                errors (list): 獲取數據過程中發生的錯誤列表。
     """
-    logger.info(f"開始執行 fetch_fred_data。參數 - Series IDs: '{series_ids_str}', 開始日期: {start_date_str}, 結束日期: {end_date_str}, API金鑰提供情況: {'是' if api_key else '否'}")
-    # Note: FRED_CACHE_TTL_SECONDS is imported but not used here as caching is removed.
+    logger.info(f"Executing fetch_fred_data with params - Series IDs: '{series_ids_str}', Start: {start_date_str}, End: {end_date_str}")
+
+    api_key = settings.FRED_API_KEY # Get API key from settings
+
+    cache_key = generate_cache_key(
+        prefix="fred",
+        series_ids=series_ids_str,
+        start=start_date_str,
+        end=end_date_str
+        # Note: api_key is not part of cache_key directly, but implicitly if different keys fetch different data (though unlikely for FRED)
+    )
+
+    cached_result = await get_cached_data(cache_key)
+    if cached_result:
+        logger.info(f"FRED cache hit for key: {cache_key}")
+        deserialized_dfs = deserialize_dataframes(cached_result.get('data', {}))
+        return deserialized_dfs, cached_result.get('errors', [])
+
+    logger.info(f"FRED cache miss for key: {cache_key}. Fetching from API.")
     data_series_dict = {}
     errors = []
 
     if not api_key:
-        msg = "FRED 錯誤：API 金鑰未提供。"
+        msg = "FRED 錯誤：API 金鑰未在環境變數中設定。" # Updated error message
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
 
     try:
-        logger.debug("正在初始化 Fred 客戶端...")
-        fred = Fred(api_key=api_key)
-        logger.debug("Fred 客戶端初始化成功。")
+        logger.debug("Initializing Fred client...")
+        fred = Fred(api_key=api_key) # Fred client is synchronous
+        logger.debug("Fred client initialized.")
     except Exception as e:
         msg = f"FRED 錯誤：API 金鑰初始化失敗: {str(e)}。"
         errors.append(msg)
         logger.error(msg, exc_info=True)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
 
     if not series_ids_str.strip():
         msg = "FRED 錯誤：Series ID 字串不可為空。"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
 
     list_of_series_ids = [sid.strip().upper() for sid in series_ids_str.split(',') if sid.strip()]
@@ -149,8 +229,9 @@ def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str,
         msg = "FRED 錯誤：未提供有效的 Series ID。"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
-    logger.debug(f"已解析的 FRED Series ID 列表: {list_of_series_ids}")
+    logger.debug(f"Parsed FRED Series IDs: {list_of_series_ids}")
 
     try:
         start_dt = datetime.strptime(start_date_str, "%Y%m%d")
@@ -158,6 +239,7 @@ def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str,
         msg = f"FRED 錯誤：開始日期格式無效 '{start_date_str}'。應為 YYYYMMDD。詳細錯誤: {e_start}"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
     try:
         end_dt = datetime.strptime(end_date_str, "%Y%m%d")
@@ -165,32 +247,35 @@ def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str,
         msg = f"FRED 錯誤：結束日期格式無效 '{end_date_str}'。應為 YYYYMMDD。詳細錯誤: {e_end}"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
 
     if start_dt > end_dt:
         msg = f"FRED 錯誤：開始日期 ({start_date_str}) 不能晚於結束日期 ({end_date_str})。"
         errors.append(msg)
         logger.error(msg)
+        await set_cached_data(cache_key, {"data": {}, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
         return data_series_dict, errors
 
     for series_id in list_of_series_ids:
-        logger.info(f"開始下載 FRED Series ID: '{series_id}' (日期: {start_date_str} - {end_date_str})")
+        logger.info(f"Downloading FRED Series ID: '{series_id}' (Range: {start_date_str}-{end_date_str})")
         try:
+            # Fred.get_series is synchronous
             series_data = fred.get_series(series_id, observation_start=start_dt, observation_end=end_dt)
             if series_data.empty:
                 msg = f"FRED 警告：Series ID '{series_id}' 在指定日期範圍內沒有找到數據。"
                 errors.append(msg)
                 logger.warning(msg)
             else:
-                df = series_data.to_frame(name=series_id)
+                df = series_data.to_frame(name=series_id) # Changed 'Value' to series_id for clarity before rename
                 df.reset_index(inplace=True)
                 df.rename(columns={'index': 'Date', series_id: 'Value'}, inplace=True)
-                df['Date'] = pd.to_datetime(df['Date'])
+                df['Date'] = pd.to_datetime(df['Date']) # Already datetime from FRED, but good practice
                 df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
                 df.dropna(subset=['Value'], inplace=True)
                 data_series_dict[series_id] = df
-                logger.info(f"成功下載 FRED Series ID '{series_id}' 的數據，共 {len(df)} 行。")
-        except ValueError as ve:
+                logger.info(f"Successfully downloaded FRED Series ID '{series_id}', {len(df)} rows.")
+        except ValueError as ve: # Often for invalid series ID
             msg = f"FRED 錯誤：Series ID '{series_id}' 無效或找不到: {str(ve)}"
             errors.append(msg)
             logger.error(msg, exc_info=True)
@@ -199,14 +284,16 @@ def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str,
             errors.append(msg)
             logger.error(msg, exc_info=True)
 
-    logger.info(f"FRED 數據獲取流程結束。成功獲取 {len(data_series_dict)} 個 Series 的數據。共發生 {len(errors)} 個錯誤/警告。")
+    serialized_dfs = serialize_dataframes(data_series_dict)
+    await set_cached_data(cache_key, {"data": serialized_dfs, "errors": errors}, ttl_seconds=FRED_CACHE_TTL_SECONDS)
+
+    logger.info(f"FRED data fetching complete. Fetched {len(data_series_dict)} series. Errors/Warnings: {len(errors)}.")
     return data_series_dict, errors
 
 
-# @st.cache_data(ttl=86400) # Decorator removed, NY_FED_CACHE_TTL_SECONDS is an alias for 86400, kept for consistency if used elsewhere
-def fetch_ny_fed_data():
+async def fetch_ny_fed_data(): # Changed to async to be consistent, though underlying ops are sync
     """
-    從紐約聯儲網站獲取主要交易商持倉數據。日誌記錄已添加。
+    從紐約聯儲網站獲取主要交易商持倉數據。日誌記錄已添加。 (快取未在此函數實現)
     使用 config.settings 中定義的 NY_FED_POSITIONS_URLS 和 SBP_XML_SUM_COLS_CONFIG。
     # TODO: Implement caching for this function in the API layer or via a dedicated caching library.
 
