@@ -126,13 +126,27 @@ def call_gemini_api(
         if current_tokens != -1 and current_tokens > effective_token_limit:
             logger.warning(f"Token 數量 {current_tokens} 超過安全閾值 {effective_token_limit}。準備截斷...")
 
-            # Truncation strategy:
-            # Keep first (system prompt, if any) and last (user question) elements.
-            # Remove from the elements in between (document contexts, data summaries).
-            # prompt_parts structure: [system_prompt, doc1_summary, doc2_summary, ..., external_data, user_question]
+            # 截斷策略 (Truncation Strategy):
+            # 目標：在 Token 數量超過限制時，智能地減少 `prompt_parts` 的內容。
+            # 1. 保留第一個元素：通常是系統提示 (system prompt) 或主要指令，這是對話的基礎。
+            # 2. 保留最後一個元素：通常是使用者的最新問題 (user question)，這是當前互動的核心。
+            # 3. 從中間部分移除元素：中間的元素通常包含上下文信息，如文檔摘要、先前對話、數據預覽等。
+            #    移除順序：從 `prompt_parts` 列表中索引較小的中間元素開始移除（即較早加入的歷史上下文）。
+            #    例如，如果 `prompt_parts` 是 `[Sys, Doc1, Doc2, Data1, UserQ]`，
+            #    移除順序將是 `Doc1`，然後是 `Doc2`，然後是 `Data1`，直到 Token 總數低於閾值。
+            #
+            # UI 回饋建議 (UI Feedback Recommendation):
+            # - 重要：此 `call_gemini_api` 服務本身不直接產生 UI 回饋。
+            # - 當提示詞因為 Token 過多而被截斷時，呼叫此服務的 UI 元件 (例如聊天介面 `chat_interface.py`)
+            #   應考慮向使用者顯示一條通知 (例如使用 `st.toast` 或聊天訊息中的提示)，
+            #   告知他們部分較早的上下文可能已被移除以符合 Token 限制。
+            #   這有助於使用者理解為何模型的回應可能未考慮到所有先前的對話或文件內容。
+            #
+            # `prompt_parts` 結構示例:
+            # [system_prompt, doc1_summary, doc2_summary, ..., external_data_summary, user_question]
 
             num_parts_original = len(contents_for_token_count)
-            if num_parts_original <= 2: # Can't truncate if only system + user_question or less
+            if num_parts_original <= 2: # 無法截斷，如果只有系統提示+用戶問題，或更少的部分。
                 logger.warning(f"無法進一步截斷，只有 {num_parts_original} 部分。API 調用可能因 Token 過多失敗。")
             else:
                 # Preserve first and last. Truncate from the one before last, then one before that, etc.

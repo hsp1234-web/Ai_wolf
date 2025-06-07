@@ -337,7 +337,7 @@ finally:
 (此部分內容與上一版 README.md 相同，保持不變)
 為了更安全和持久地使用 API Key，建議使用 Colab 的 **Secrets Manager**：
 1.  **在 Colab 中添加密鑰：** 左側鑰匙圖標 -> "+ 新增密鑰" -> 名稱 `GEMINI_API_KEY` -> 貼上金鑰值 -> 啟用 "筆記本訪問權限"。
-2.  **`app.py` 中的讀取邏輯**：最新版的 `app.py` 已包含優先從 Colab Secrets 讀取 `GEMINI_API_KEY` 的邏輯。
+2.  **應用程式中的讀取邏輯**：應用程式會透過 `utils/session_state_manager.py` 中的邏輯，優先從 Colab Secrets 讀取名為 `GEMINI_API_KEY` 的金鑰。
 
 ---
 
@@ -699,6 +699,6 @@ These logs are primarily used for:
 (This section remains the same as the previous README.md version)
 Use Colab's **Secrets Manager** for better security:
 1.  **Add Secret in Colab:** Key icon (Secrets) -> "+ New secret" -> Name `GEMINI_API_KEY` -> Paste key value -> Enable "Notebook access".
-2.  **Reading Logic in `app.py`**: The latest `app.py` prioritizes reading `GEMINI_API_KEY` from Colab Secrets.
+2.  **Reading Logic in the Application**: The application, through logic in `utils/session_state_manager.py`, prioritizes reading the `GEMINI_API_KEY` from Colab Secrets.
 
 ---
