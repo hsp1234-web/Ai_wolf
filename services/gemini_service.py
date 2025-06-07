@@ -16,7 +16,7 @@ def call_gemini_api(
     global_tpm: int, # TPM is not directly used in this version of call_gemini_api but kept for future
     generation_config_dict: Optional[Dict[str, Any]] = None,
     cached_content_name: Optional[str] = None
-) -> str:
+) -> Tuple[str, bool]: # Modified return type
     """
     呼叫 Gemini API 以生成內容。日誌記錄已添加。
 
@@ -30,14 +30,17 @@ def call_gemini_api(
         cached_content_name: 要使用的已快取內容的名稱。
 
     Returns:
-        str: Gemini API 返回的文本結果，或錯誤訊息。
+        Tuple[str, bool]: Gemini API 返回的文本結果 (或錯誤訊息) 和一個布林值指示是否發生了截斷。
     """
     logger.info(f"開始執行 call_gemini_api。模型: {selected_model}, 是否使用快取: {'是' if cached_content_name else '否'}, 提示詞部分數量: {len(prompt_parts)}")
     logger.debug(f"詳細參數 - global_rpm: {global_rpm}, global_tpm: {global_tpm}, generation_config: {generation_config_dict}, cached_content_name: {cached_content_name}")
 
+    # Initialize was_truncated early, default to False for early exits or pre-truncation errors
+    was_truncated = False
+
     if not api_keys_list:
         logger.error("Gemini API 呼叫中止：原始 API 金鑰列表為空。")
-        return "錯誤：未提供有效的 Gemini API 金鑰。"
+        return "錯誤：未提供有效的 Gemini API 金鑰。", was_truncated
 
     # 過濾掉暫時無效的金鑰
     temporarily_invalid_keys = st.session_state.get('temporarily_invalid_gemini_keys', [])
@@ -46,7 +49,7 @@ def call_gemini_api(
 
     if not available_keys:
         logger.error("Gemini API 呼叫中止：所有提供的 API 金鑰均已在本會話中被標記為無效。")
-        return "錯誤：所有可用的 Gemini API 金鑰均已在本會話中被標記為無效或權限不足。"
+        return "錯誤：所有可用的 Gemini API 金鑰均已在本會話中被標記為無效或權限不足。", was_truncated
 
     # API 金鑰輪換和速率限制邏輯 (基於 available_keys)
     active_key_index = st.session_state.get('active_gemini_key_index', 0)
@@ -83,7 +86,7 @@ def call_gemini_api(
         st.session_state.active_gemini_key_index = (active_key_index + 1) % len(available_keys)
         next_api_key_candidate = available_keys[st.session_state.active_gemini_key_index]
         logger.warning(f"API 金鑰 ...{current_api_key[-4:]} (在可用列表中的索引 {original_key_index_in_available}) RPM 已達上限。嘗試切換到下一個可用金鑰索引 {st.session_state.active_gemini_key_index} (尾號: ...{next_api_key_candidate[-4:]})。")
-        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} RPM 達到上限 ({global_rpm})。已自動輪換金鑰，請重試。"
+        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} RPM 達到上限 ({global_rpm})。已自動輪換金鑰，請重試。", was_truncated # was_truncated is False here
 
     try:
         logger.info(f"正在使用 API 金鑰 ...{current_api_key[-4:]} 配置 Gemini (模型: {selected_model})...")
@@ -91,124 +94,25 @@ def call_gemini_api(
         model = genai.GenerativeModel(model_name=selected_model)
         logger.debug(f"Gemini 模型實例化完成: {model}")
 
-        # --- Token Counting and Truncation Logic ---
-        # The 'prompt_parts' list is what we need to count and potentially truncate.
-        # It's already a list of strings/parts.
-
-        # Convert prompt_parts to a format suitable for count_tokens
-        # For simple list of strings, count_tokens can often handle it directly.
-        # If it were a more complex chat history, conversion to glm.Content objects would be needed.
-        contents_for_token_count = [str(p) for p in prompt_parts] # Ensure all parts are strings
+        # --- Token Counting and Truncation Logic (using helper function) ---
+        final_contents_for_api_call = [str(p) for p in prompt_parts] # Default to original if truncation fails or not needed
 
         try:
-            token_count_response = model.count_tokens(contents_for_token_count)
-            current_tokens = token_count_response.total_tokens
-            logger.info(f"預計請求 Token 數量 (未截斷前): {current_tokens}")
-        except Exception as e_count_tokens:
-            logger.error(f"計算 Token 數量時出錯: {e_count_tokens}. 將繼續嘗試 API 調用，但可能因 Token 過多而失敗。", exc_info=True)
-            current_tokens = -1 # Indicate error or unknown count
+            model_token_limit = model.input_token_limit
+            safety_factor = 0.90
+            effective_token_limit = int(model_token_limit * safety_factor)
+            logger.info(f"call_gemini_api: 模型 '{selected_model}' 輸入 Token 上限: {model_token_limit}, 安全計算閾值: {effective_token_limit}")
 
-        model_token_limit = model.input_token_limit
-        # Safety factor: use 90% of limit, or limit - N if preferred. Let's use 90%.
-        # Max output tokens in generation_config_dict also plays a role, ensure input is not too close to total limit.
-        # For simplicity, we'll focus on input_token_limit for truncation of input.
-        safety_factor = 0.90
-        # Reserve some tokens for output as well. A fixed number or percentage of input_token_limit.
-        # Let's reserve 10% of limit for output, so effective input limit is 80% if max_output_tokens is large.
-        # Or, more simply, ensure input is < input_token_limit * 0.9.
-        # The user-set max_output_tokens should ideally be respected by the model *after* input.
-        # A common strategy is to ensure input_tokens + max_output_tokens < total_model_capacity.
-        # Here, we simplify and only truncate input based on input_token_limit.
+            final_contents_for_api_call, was_truncated = _truncate_prompt_parts(
+                prompt_parts, model, effective_token_limit, logger
+            )
+            if was_truncated:
+                logger.info("call_gemini_api: 提示詞因Token超限已被截斷。")
 
-        effective_token_limit = int(model_token_limit * safety_factor)
-        logger.debug(f"模型 '{selected_model}' 的輸入 Token 上限: {model_token_limit}, 安全計算閾值 (x{safety_factor}): {effective_token_limit}")
-
-        if current_tokens != -1 and current_tokens > effective_token_limit:
-            logger.warning(f"Token 數量 {current_tokens} 超過安全閾值 {effective_token_limit}。準備截斷...")
-
-            # 截斷策略 (Truncation Strategy):
-            # 目標：在 Token 數量超過限制時，智能地減少 `prompt_parts` 的內容。
-            # 1. 保留第一個元素：通常是系統提示 (system prompt) 或主要指令，這是對話的基礎。
-            # 2. 保留最後一個元素：通常是使用者的最新問題 (user question)，這是當前互動的核心。
-            # 3. 從中間部分移除元素：中間的元素通常包含上下文信息，如文檔摘要、先前對話、數據預覽等。
-            #    移除順序：從 `prompt_parts` 列表中索引較小的中間元素開始移除（即較早加入的歷史上下文）。
-            #    例如，如果 `prompt_parts` 是 `[Sys, Doc1, Doc2, Data1, UserQ]`，
-            #    移除順序將是 `Doc1`，然後是 `Doc2`，然後是 `Data1`，直到 Token 總數低於閾值。
-            #
-            # UI 回饋建議 (UI Feedback Recommendation):
-            # - 重要：此 `call_gemini_api` 服務本身不直接產生 UI 回饋。
-            # - 當提示詞因為 Token 過多而被截斷時，呼叫此服務的 UI 元件 (例如聊天介面 `chat_interface.py`)
-            #   應考慮向使用者顯示一條通知 (例如使用 `st.toast` 或聊天訊息中的提示)，
-            #   告知他們部分較早的上下文可能已被移除以符合 Token 限制。
-            #   這有助於使用者理解為何模型的回應可能未考慮到所有先前的對話或文件內容。
-            #
-            # `prompt_parts` 結構示例:
-            # [system_prompt, doc1_summary, doc2_summary, ..., external_data_summary, user_question]
-
-            num_parts_original = len(contents_for_token_count)
-            if num_parts_original <= 2: # 無法截斷，如果只有系統提示+用戶問題，或更少的部分。
-                logger.warning(f"無法進一步截斷，只有 {num_parts_original} 部分。API 調用可能因 Token 過多失敗。")
-            else:
-                # Preserve first and last. Truncate from the one before last, then one before that, etc.
-                # Indices to consider for removal: 1 to num_parts_original - 2
-                # We remove from the end of the "middle" section first (i.e. parts that appear earlier in the list)
-
-                # Keep a copy for manipulation
-                truncated_contents = list(contents_for_token_count)
-
-                # Elements to always keep (indices)
-                idx_system_prompt = 0 if num_parts_original > 0 else -1 # Should always exist if prompt_parts is not empty
-                idx_user_question = num_parts_original - 1 if num_parts_original > 0 else -1 # Last element
-
-                # Parts that can be removed (indices in original list): from 1 up to num_parts_original - 2
-                # We'll remove from the start of this removable block.
-                # e.g., if [Sys, Doc1, Doc2, Doc3, UserQ], removable_indices = [1, 2, 3] (Doc1, Doc2, Doc3)
-                # We remove Doc1, then Doc2, then Doc3.
-
-                # We need to reconstruct `contents_for_token_count` from `truncated_contents` at each step.
-                # A simpler way for `prompt_parts` which is a list of strings:
-                # Assume `prompt_parts[0]` is system prompt, `prompt_parts[-1]` is user query.
-                # Middle parts are `prompt_parts[1:-1]`.
-
-                system_prompt_part = [prompt_parts[0]] if len(prompt_parts) > 0 else []
-                user_question_part = [prompt_parts[-1]] if len(prompt_parts) > 1 else [] # if len=1, it's already in system_prompt_part effectively
-
-                middle_parts_to_truncate = list(prompt_parts[len(system_prompt_part):-len(user_question_part)])
-
-                while current_tokens > effective_token_limit and middle_parts_to_truncate:
-                    logger.debug(f"截斷前 middle_parts 數量: {len(middle_parts_to_truncate)}")
-                    middle_parts_to_truncate.pop(0) # Remove the "earliest" middle part
-                    logger.debug(f"截斷後 middle_parts 數量: {len(middle_parts_to_truncate)}")
-
-                    temp_contents = system_prompt_part + middle_parts_to_truncate + user_question_part
-                    contents_for_token_count = [str(p) for p in temp_contents] # Update for recount
-
-                    try:
-                        token_count_response = model.count_tokens(contents_for_token_count)
-                        current_tokens = token_count_response.total_tokens
-                        logger.info(f"截斷後，重新計算的 Token 數量: {current_tokens}")
-                    except Exception as e_recount:
-                        logger.error(f"截斷後重新計算 Token 時出錯: {e_recount}. 停止截斷。", exc_info=True)
-                        current_tokens = -1 # Mark as error
-                        break # Stop truncation
-
-                if current_tokens != -1 and current_tokens > effective_token_limit:
-                     logger.warning(f"即使在截斷中間部分後，Token 數量 ({current_tokens}) 仍可能過高。")
-                elif current_tokens != -1:
-                    logger.info(f"內容已截斷。最終 Token 數量: {current_tokens} (有效上限: {effective_token_limit})")
-
-            if current_tokens == -1 : # Error during token counting
-                 logger.warning("由於Token計數錯誤，將使用原始提示內容進行API調用。")
-                 contents_for_api_call = [str(p) for p in prompt_parts] # Fallback to original
-            else: # Use the (potentially truncated) contents_for_token_count
-                 contents_for_api_call = contents_for_token_count
-        else: # Tokens are within limit or count failed initially
-            contents_for_api_call = contents_for_token_count
-            if current_tokens == -1:
-                 logger.warning("Token計數初始失敗，將使用原始提示內容進行API調用。")
-            else:
-                 logger.info(f"Token 數量 {current_tokens} 在安全閾值 {effective_token_limit} 之內，無需截斷。")
-
+        except Exception as e_trunc_setup:
+            logger.error(f"call_gemini_api: 準備截斷或執行截斷時發生錯誤: {e_trunc_setup}. 將使用原始提示。", exc_info=True)
+            final_contents_for_api_call = [str(p) for p in prompt_parts] # Ensure original parts are used
+            was_truncated = False # Explicitly set to false as truncation process had an issue
         # --- End of Token Counting and Truncation ---
 
         generation_config_obj = genai.types.GenerationConfig(**generation_config_dict) if generation_config_dict else None
@@ -218,16 +122,16 @@ def call_gemini_api(
         # The generate_content API expects a list of parts (which can be strings)
         # No need to join them into a single string here if the API handles List[str]
 
-        logger.debug(f"最終發送到 Gemini 的內容部分數量: {len(contents_for_api_call)}")
-        if contents_for_api_call:
-            logger.debug(f"  首部分 (前100字符): {str(contents_for_api_call[0])[:100]}...")
-            if len(contents_for_api_call) > 1:
-                 logger.debug(f"  末部分 (前100字符): {str(contents_for_api_call[-1])[:100]}...")
+        logger.debug(f"最終發送到 Gemini 的內容部分數量: {len(final_contents_for_api_call)}")
+        if final_contents_for_api_call:
+            logger.debug(f"  首部分 (前100字符): {str(final_contents_for_api_call[0])[:100]}...")
+            if len(final_contents_for_api_call) > 1:
+                 logger.debug(f"  末部分 (前100字符): {str(final_contents_for_api_call[-1])[:100]}...")
 
 
         logger.info(f"正在調用 Gemini API (model.generate_content)... 使用快取: {cached_content_name if cached_content_name else '無'}")
         response = model.generate_content(
-            contents_for_api_call, # Pass the list of content parts
+            final_contents_for_api_call, # Pass the list of content parts
             generation_config=generation_config_obj,
             safety_settings=None, # Default safety settings
             tools=None,
@@ -254,17 +158,17 @@ def call_gemini_api(
         logger.info(f"從 Gemini API 獲取回應文本，長度: {len(response_text)}")
         if not response_text:
             logger.warning("Gemini API 返回的響應中沒有文本內容 (parts 或 text 均為空或無效)。")
-            return "錯誤：模型未返回任何文字內容。" # 更明確的錯誤訊息
+            return "錯誤：模型未返回任何文字內容。", was_truncated
 
         logger.debug(f"Gemini API 原始回應 (前100字符): {response_text[:100]}...")
-        return response_text
+        return response_text, was_truncated
 
     except genai.types.BlockedPromptException as bpe:
         logger.error(f"Gemini API 錯誤 (BlockedPromptException) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {bpe}", exc_info=True)
-        return f"錯誤：提示詞被 Gemini API 封鎖。原因: {bpe}"
+        return f"錯誤：提示詞被 Gemini API 封鎖。原因: {bpe}", was_truncated # Error after truncation attempt
     except genai.types.generation_types.StopCandidateException as sce:
         logger.error(f"Gemini API 錯誤 (StopCandidateException) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {sce}", exc_info=True)
-        return f"錯誤：內容生成因安全原因或其他限制而停止。原因: {sce}"
+        return f"錯誤：內容生成因安全原因或其他限制而停止。原因: {sce}", was_truncated # Error after truncation attempt
     except google.api_core.exceptions.PermissionDenied as e:
         logger.error(f"Gemini API 錯誤 (PermissionDenied) 使用金鑰 ...{current_api_key[-4:]} (模型 {selected_model}): {str(e)}。該金鑰將被標記為暫時不可用。", exc_info=True)
         # 確保 'temporarily_invalid_gemini_keys' 列表存在於 session_state 中
@@ -275,19 +179,77 @@ def call_gemini_api(
         # 更新 active_gemini_key_index 以便下次嘗試不同的 (如果有的話) 或相同的 (如果只有一個壞鍵)
         st.session_state.active_gemini_key_index = (active_key_index + 1) % len(available_keys) if len(available_keys) > 0 else 0
 
-        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} 權限不足或已過期，已被標記為暫時不可用。請嘗試重新發送請求，系統將嘗試使用下一個可用金鑰。"
+        return f"錯誤：API 金鑰 ...{current_api_key[-4:]} 權限不足或已過期，已被標記為暫時不可用。請嘗試重新發送請求，系統將嘗試使用下一個可用金鑰。", False # Error before this call's content processing
     except google.api_core.exceptions.InvalidArgument as e:
         logger.error(f"Gemini API 錯誤 (InvalidArgument) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(e)}", exc_info=True)
-        return f"錯誤：呼叫 Gemini API 時參數無效 (例如模型名稱 '{selected_model}' 不正確或內容不當)。詳細資訊: {str(e)}"
+        return f"錯誤：呼叫 Gemini API 時參數無效 (例如模型名稱 '{selected_model}' 不正確或內容不當)。詳細資訊: {str(e)}", was_truncated # Error after truncation attempt
     except google.api_core.exceptions.ResourceExhausted as re: # RPM/TPM 錯誤
         logger.error(f"Gemini API 錯誤 (ResourceExhausted) 使用金鑰 ...{current_api_key[-4:]}，模型 {selected_model}: {str(re)}", exc_info=True)
         # 這種情況下，我們也應該輪換金鑰，類似於 RPM 檢查後的輪換
         st.session_state.active_gemini_key_index = (active_key_index + 1) % len(available_keys) if len(available_keys) > 0 else 0
-        return f"錯誤：Gemini API 資源耗盡 (金鑰 ...{current_api_key[-4:]} 可能達到 RPM/TPM 上限)。已嘗試輪換金鑰，請重試。詳細資訊: {str(re)}"
+        return f"錯誤：Gemini API 資源耗盡 (金鑰 ...{current_api_key[-4:]} 可能達到 RPM/TPM 上限)。已嘗試輪換金鑰，請重試。詳細資訊: {str(re)}", False # Error before this call's content processing
     except Exception as e:
         logger.error(f"呼叫 Gemini API 時發生非預期錯誤 (金鑰 ...{current_api_key[-4:]}，模型 {selected_model}): {type(e).__name__} - {str(e)}", exc_info=True)
-        return f"呼叫 Gemini API 時發生非預期錯誤: {type(e).__name__} - {str(e)}"
+        return f"呼叫 Gemini API 時發生非預期錯誤: {type(e).__name__} - {str(e)}", was_truncated # Error could be after truncation attempt
 
+
+def _truncate_prompt_parts(prompt_parts: List[str], model: Any, effective_token_limit: int, logger_object: logging.Logger) -> Tuple[List[str], bool]:
+    """
+    智能截斷提示詞列表以符合 Token 限制。
+
+    Args:
+        prompt_parts: 原始提示詞部分列表。
+        model: Gemini 模型對象 (用於 count_tokens)。
+        effective_token_limit: 經安全係數調整後的有效 Token 上限。
+        logger_object: 用於日誌記錄的 logger 實例。
+
+    Returns:
+        Tuple[List[str], bool]: 截斷後的提示詞列表和一個布林值 (True 表示發生了截斷)。
+    """
+    was_truncated = False
+    contents_for_token_count = [str(p) for p in prompt_parts]
+
+    try:
+        token_count_response = model.count_tokens(contents_for_token_count)
+        current_tokens = token_count_response.total_tokens
+        logger_object.info(f"_truncate_prompt_parts: 初始 Token 數量: {current_tokens}, 限制: {effective_token_limit}")
+    except Exception as e_count_tokens:
+        logger_object.error(f"_truncate_prompt_parts: 計算 Token 數量時出錯: {e_count_tokens}. 無法執行截斷。", exc_info=True)
+        return prompt_parts, False # 返回原始parts，未截斷
+
+    if current_tokens > effective_token_limit:
+        logger_object.warning(f"_truncate_prompt_parts: Token 數量 {current_tokens} 超過安全閾值 {effective_token_limit}。開始截斷...")
+        was_truncated = True
+        num_parts_original = len(contents_for_token_count)
+
+        if num_parts_original <= 2:
+            logger_object.warning(f"_truncate_prompt_parts: 無法進一步截斷，只有 {num_parts_original} 部分。")
+            return contents_for_token_count, was_truncated # 雖然標記為 truncated，但實際未改變
+
+        system_prompt_part = [prompt_parts[0]] if len(prompt_parts) > 0 else []
+        user_question_part = [prompt_parts[-1]] if len(prompt_parts) > 1 else []
+        middle_parts_to_truncate = list(prompt_parts[len(system_prompt_part):-len(user_question_part)])
+
+        while current_tokens > effective_token_limit and middle_parts_to_truncate:
+            middle_parts_to_truncate.pop(0) # 移除最早的中間部分
+            temp_contents = system_prompt_part + middle_parts_to_truncate + user_question_part
+
+            try:
+                token_count_response = model.count_tokens(temp_contents)
+                current_tokens = token_count_response.total_tokens
+                logger_object.info(f"_truncate_prompt_parts: 截斷後，重新計算的 Token 數量: {current_tokens}")
+            except Exception as e_recount:
+                logger_object.error(f"_truncate_prompt_parts: 截斷後重新計算 Token 時出錯: {e_recount}. 停止截斷。", exc_info=True)
+                # 返回當前已截斷的狀態，即使計數失敗
+                return temp_contents, was_truncated
+
+        contents_for_token_count = system_prompt_part + middle_parts_to_truncate + user_question_part
+        if current_tokens > effective_token_limit:
+            logger_object.warning(f"_truncate_prompt_parts: 即使截斷後，Token 數量 ({current_tokens}) 仍可能過高。")
+    else:
+        logger_object.info(f"_truncate_prompt_parts: Token 數量 {current_tokens} 在限制內，無需截斷。")
+
+    return contents_for_token_count, was_truncated
 
 def create_gemini_cache(
     api_key: str,

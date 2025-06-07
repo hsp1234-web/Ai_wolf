@@ -185,7 +185,8 @@ def _trigger_gemini_response_processing():
                 model_response_text = "錯誤：請在側邊欄選擇一個 Gemini 模型。"
                 is_error_response = True
             else:
-                model_response_text = call_gemini_api(
+                # Modified call to unpack two return values
+                model_response_text, was_truncated = call_gemini_api(
                     prompt_parts=full_prompt_parts, # This should be the list of strings
                     api_keys_list=valid_gemini_api_keys,
                     selected_model=selected_model_name,
@@ -194,6 +195,9 @@ def _trigger_gemini_response_processing():
                     generation_config_dict=generation_config,
                     cached_content_name=selected_cache_name_for_api
                 )
+                if was_truncated:
+                    st.toast("⚠️ 為符合模型限制，部分較早的對話或文件上下文已被移除。", icon="⚠️")
+
                 if model_response_text.startswith("錯誤："): is_error_response = True
         except Exception as e:
             logger.error(f"聊天介面：在準備或調用 Gemini API 時發生意外錯誤: {type(e).__name__} - {str(e)}", exc_info=True)

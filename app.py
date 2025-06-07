@@ -8,30 +8,13 @@ import os # 引入 os 以便處理路徑
 from utils.log_utils import setup_logging
 from utils.session_state_manager import initialize_session_state
 from utils.css_utils import load_custom_css, apply_dynamic_css # 導入新的函數
+from utils.path_manager import APP_LOG_DIR, APP_LOG_FILE_PATH # Import new paths
 
 from components.sidebar import render_sidebar
 from components.main_page import render_main_page_content
 from components.chat_interface import render_chat
 from components.log_display import render_log_viewer
 from config import app_settings # Import app_settings
-
-# --- 定義日誌檔案路徑 ---
-IN_COLAB = 'google.colab' in sys.modules
-if IN_COLAB:
-    # For Colab, construct path using COLAB_DRIVE_BASE_PATH and BASE_DATA_DIR_NAME
-    BASE_DATA_DIR = os.path.join(
-        app_settings.COLAB_DRIVE_BASE_PATH,
-        app_settings.BASE_DATA_DIR_NAME
-    )
-else:
-    # For local, construct path using USER_HOME_DIR and BASE_DATA_DIR_NAME
-    BASE_DATA_DIR = os.path.join(
-        os.path.expanduser(app_settings.USER_HOME_DIR),
-        app_settings.BASE_DATA_DIR_NAME
-    )
-
-APP_LOG_DIR = os.path.join(BASE_DATA_DIR, app_settings.APP_LOG_DIR_NAME)
-APP_LOG_FILE_PATH = os.path.join(APP_LOG_DIR, "streamlit.log") # Filename can also be a constant
 
 # --- 全局日誌記錄器 ---
 logger = logging.getLogger(__name__)
@@ -46,17 +29,7 @@ def main():
     # 2. 初始化 Session State (包括 API 金鑰的 Colab Secrets 讀取邏輯)
     initialize_session_state()
 
-    # 2.1 確保日誌目錄存在
-    if not os.path.exists(APP_LOG_DIR):
-        try:
-            os.makedirs(APP_LOG_DIR, exist_ok=True)
-            # 使用 logging 記錄此信息，而不是 print
-            # logger.info(f"日誌目錄 {APP_LOG_DIR} 已創建。") # 注意：此時 logger 可能還未完全配置 FileHandler
-        except Exception as e:
-            # logger.error(f"創建日誌目錄 {APP_LOG_DIR} 失敗: {e}") # 同上
-            # 打印到 stderr 以便在啟動早期階段可見
-            print(f"Warning: Failed to create log directory {APP_LOG_DIR}: {str(e)}", file=sys.stderr)
-
+    # 2.1 日誌目錄創建已移至 path_manager.py
 
     # 3. 初始化日誌系統
     if 'log_handler' not in st.session_state or st.session_state.log_handler is None:
@@ -89,8 +62,8 @@ def main():
             render_log_viewer()
         except Exception as e:
             logger.error(f"渲染核心組件時發生嚴重錯誤: {str(e)}", exc_info=True)
-        st.error(f"應用程式在渲染核心UI組件時遇到問題: {str(e)}")
-        st.error("請嘗試刷新頁面. 如果問題持續, 請檢查日誌或聯繫開發者.")
+            st.error(f"應用程式在渲染核心UI組件時遇到問題: {str(e)}")
+            st.error("請嘗試刷新頁面. 如果問題持續, 請檢查日誌或聯繫開發者.")
 
     logger.info("主應用: 主要渲染流程結束.")
 
