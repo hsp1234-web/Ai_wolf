@@ -7,7 +7,7 @@ from fredapi import Fred
 import requests
 import io
 import logging
-from config.app_settings import NY_FED_POSITIONS_URLS_CORRECTED, SBP_COLS_TO_SUM # Import new config
+from config.app_settings import NY_FED_POSITIONS_URLS, SBP_XML_SUM_COLS_CONFIG # Import new config
 
 logger = logging.getLogger(__name__)
 
@@ -200,16 +200,13 @@ def fetch_fred_data(series_ids_str: str, start_date_str: str, end_date_str: str,
 def fetch_ny_fed_data():
     """
     從紐約聯儲網站獲取主要交易商持倉數據。日誌記錄已添加。
-    使用 config/app_settings.py 中定義的 NY_FED_POSITIONS_URLS_CORRECTED 和 SBP_COLS_TO_SUM。
+    使用 config/app_settings.py 中定義的 NY_FED_POSITIONS_URLS 和 SBP_XML_SUM_COLS_CONFIG。
 
     Returns:
         tuple: (final_df, errors)
                final_df (pd.DataFrame or None): 包含合併和處理後的數據的 DataFrame，如果失敗則為 None。
                errors (list): 獲取數據過程中發生的錯誤列表。
     """
-    logger.warning("NY Fed data fetching is temporarily disabled due to API issues.")
-    return None, ["NY Fed data fetching is temporarily disabled due to API issues. Please check back later or contact support for more information."]
-
     # 以下是原始代碼，暫時被禁用
     logger.info("開始執行 fetch_ny_fed_data (紐約聯儲數據)。")
     all_positions_data = []
@@ -219,7 +216,7 @@ def fetch_ny_fed_data():
     DATE_COLUMN_INDEX_ASSUMPTION = 0
     logger.debug(f"NY Fed 配置 - 表頭行(假設): {HEADER_ROW_ASSUMPTION}, 日期列索引(假設): {DATE_COLUMN_INDEX_ASSUMPTION}")
 
-    for item in NY_FED_POSITIONS_URLS_CORRECTED:
+    for item in NY_FED_POSITIONS_URLS:
         url = item["url"]
         name = item["name"]
         file_type = item.get("type", "excel")
@@ -302,9 +299,9 @@ def fetch_ny_fed_data():
                     continue
 
                 current_cols_to_sum = []
-                matched_sbp_key = next((key for key in SBP_COLS_TO_SUM if key in url), None)
+                matched_sbp_key = next((key for key in SBP_XML_SUM_COLS_CONFIG if key in url), None)
                 if matched_sbp_key:
-                    current_cols_to_sum = [col for col in SBP_COLS_TO_SUM[matched_sbp_key] if col in df.columns]
+                    current_cols_to_sum = [col for col in SBP_XML_SUM_COLS_CONFIG[matched_sbp_key] if col in df.columns]
                     logger.info(f"NY Fed Excel ({name}): 根據 URL 中的 '{matched_sbp_key}'，匹配到的 SBP 列: {current_cols_to_sum}")
 
                 if not current_cols_to_sum and ("SBN" in url or "SOMA" in name):
@@ -312,7 +309,7 @@ def fetch_ny_fed_data():
                     logger.info(f"NY Fed Excel ({name}): 未匹配到 SBP key，但檢測到 SBN/SOMA 類型，使用通用 PDPOSGSC- 列: {current_cols_to_sum}")
 
                 if not current_cols_to_sum:
-                    msg = f"NY Fed 警告：Excel 檔案 {url} ({name}) 中未找到配置的目標欄位 (SBP_COLS_TO_SUM 或通用 PDPOSGSC-)。跳過此檔案。可用列: {df.columns.tolist()}"
+                    msg = f"NY Fed 警告：Excel 檔案 {url} ({name}) 中未找到配置的目標欄位 (SBP_XML_SUM_COLS_CONFIG 或通用 PDPOSGSC-)。跳過此檔案。可用列: {df.columns.tolist()}"
                     errors.append(msg)
                     logger.warning(msg)
                     continue
