@@ -4,6 +4,7 @@ import streamlit as st
 from io import StringIO
 import os
 import sys
+from config.app_settings import MAX_UI_LOG_ENTRIES # Import specific setting
 
 
 class StreamlitLogHandler(logging.Handler):
@@ -46,9 +47,9 @@ class StreamlitLogHandler(logging.Handler):
 
                 st.session_state[self.ui_log_key].append(log_entry)
                 # 考慮限制 UI 日誌列表的長度，以避免 session_state 過大
-                max_ui_logs = 300 # 例如，最多保留最新的300條UI日誌
-                if len(st.session_state[self.ui_log_key]) > max_ui_logs:
-                    st.session_state[self.ui_log_key] = st.session_state[self.ui_log_key][-max_ui_logs:]
+                # max_ui_logs = 300 # Replaced by app_settings.MAX_UI_LOG_ENTRIES
+                if len(st.session_state[self.ui_log_key]) > app_settings.MAX_UI_LOG_ENTRIES:
+                    st.session_state[self.ui_log_key] = st.session_state[self.ui_log_key][-app_settings.MAX_UI_LOG_ENTRIES:]
             except Exception as e:
                 # 如果在寫入 session_state 時發生錯誤，至少記錄到內部日誌
                 # 避免在這裡使用 logging.error() 以防止潛在的遞歸錯誤

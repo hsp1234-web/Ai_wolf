@@ -4,6 +4,7 @@ import logging
 import os
 from config.api_keys_config import api_keys_info
 from config import app_settings # Import app_settings
+from config.app_settings import DEFAULT_THEME, DEFAULT_FONT_SIZE_NAME, DEFAULT_CACHE_DISPLAY_NAME # Import specific settings
 from services.model_catalog import get_available_models, format_model_display_name
 from services.gemini_service import (
     create_gemini_cache,
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def _render_appearance_section():
     st.sidebar.header("🎨 外觀主題與字體")
-    active_theme = st.session_state.get("active_theme", "Light")
+    active_theme = st.session_state.get("active_theme", app_settings.DEFAULT_THEME)
     toggle_label = f"切換到 {'亮色模式' if active_theme == 'Dark' else '暗色模式'}"
     original_theme = st.session_state.active_theme
 
@@ -42,7 +43,7 @@ def _render_appearance_section():
 
     st.sidebar.markdown("##### 選擇字體大小:")
     font_size_options = list(st.session_state.get("font_size_css_map", app_settings.FONT_SIZE_CSS_MAP).keys())
-    current_font_size_name = st.session_state.get("font_size_name", "Medium")
+    current_font_size_name = st.session_state.get("font_size_name", app_settings.DEFAULT_FONT_SIZE_NAME)
 
     selected_font_size_name = st.sidebar.radio(
         "字體大小:",
@@ -231,7 +232,7 @@ def _render_gemini_cache_management_section():
     if not gemini_api_key_for_cache:
         st.sidebar.warning("需要有效的 Gemini API 金鑰才能管理內容快取。請在上方設定。")
     else:
-        old_cache_display_name = st.session_state.get("cache_display_name_input", "my_default_cache")
+        old_cache_display_name = st.session_state.get("cache_display_name_input", app_settings.DEFAULT_CACHE_DISPLAY_NAME)
         new_cache_display_name = st.sidebar.text_input(
             "快取顯示名稱:", value=old_cache_display_name, key="sidebar_cache_display_name_input"
         )
