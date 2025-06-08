@@ -152,4 +152,18 @@ def test_get_ai_chat_completion_empty_parts_returns_empty_string(MockGenerativeM
     reply = get_ai_chat_completion(prompt="Test prompt")
     assert reply == "", "Reply should be an empty string if parts list is empty"
 
+@patch("app.services.ai_service.genai.GenerativeModel")
+def test_get_ai_chat_completion_gemini_api_timeout(MockGenerativeModel, manage_gemini_api_key):
+    """Tests that a simulated timeout from Gemini API is wrapped in AIServiceError."""
+    mock_model_instance = MagicMock()
+    # Simulate a timeout or a generic connection error from the Gemini client library
+    # For this test, a generic Exception can represent various underlying network issues or timeouts.
+    # If google-generativeai has a specific timeout exception, that could be used,
+    # but AIService should catch any Exception from generate_content.
+    mock_model_instance.generate_content.side_effect = Exception("Simulated API timeout or network error")
+    MockGenerativeModel.return_value = mock_model_instance
+
+    with pytest.raises(AIServiceError, match="Failed to get AI completion: Simulated API timeout or network error"):
+        get_ai_chat_completion(prompt="Test prompt that simulates timeout")
+
 # Add more tests as needed for different roles, complex history, specific generation configs, etc.
