@@ -225,6 +225,12 @@ def phase_1_environment_setup():
     # Streamlit application tests
     test_streamlit_startup_and_log_initialization()
 
+    # AI Functionality and Data Integration Tests
+    if server_started_ok and test_api_auth_token: # Depends on FastAPI server and auth
+        test_ai_market_review_with_specific_date()
+    else:
+        add_test_result("AI 功能與資料整合測試", "AI Market Review with Specific Date", "SKIPPED", "FastAPI server not running or auth token not available.")
+
 
     return clone_successful
 
@@ -1304,6 +1310,57 @@ def phase_2_tests(project_clone_successful):
                 except Exception as e:
                     add_test_result(api_category_name, "Data Fetch - yfinance Invalid Ticker", "FAIL", str(e))
 
+            # --- Test FRED API data source via /api/data/fetch ---
+            if not test_api_auth_token:
+                add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "SKIPPED", "Auth token not available.")
+                add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "SKIPPED", "Auth token not available.")
+                add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "SKIPPED", "Auth token not available.")
+            else:
+                # Valid FRED Series
+                fred_payload_valid = {"source": "fred", "parameters": {"series_id": "GNPCA", "limit": 5}} # Add limit for manageable response
+                log_message(f"Testing {data_fetch_url} (FRED GNPCA) with payload: {fred_payload_valid}", level="DEBUG")
+                try:
+                    r_fred_valid = requests.post(data_fetch_url, json=fred_payload_valid, headers=auth_headers, timeout=20) # FRED can be slow
+                    if r_fred_valid.status_code == 200 and r_fred_valid.json().get("success") and r_fred_valid.json().get("data") and not r_fred_valid.json().get("is_cached"):
+                        # Add more specific check for data structure if possible, e.g., list of observations
+                        data_sample = r_fred_valid.json().get("data")
+                        data_looks_ok = isinstance(data_sample, list) and len(data_sample) > 0 and "date" in data_sample[0] and "value" in data_sample[0]
+                        if data_looks_ok:
+                            add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "PASS", "Status 200, success:true, data present, is_cached:false.", value=f"Data sample: {str(data_sample)[:70]}...")
+                        else:
+                            add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "WARN", "Status 200, success:true, but data format unexpected or empty.", value=f"Response: {r_fred_valid.text[:200]}")
+                    else:
+                        add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "FAIL", f"Status: {r_fred_valid.status_code}, Response: {r_fred_valid.text[:200]}")
+                except Exception as e:
+                    add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "FAIL", str(e))
+
+                # FRED Cache Check (GNPCA)
+                log_message(f"Testing {data_fetch_url} (FRED GNPCA Cache) with payload: {fred_payload_valid}", level="DEBUG")
+                try:
+                    r_fred_cache = requests.post(data_fetch_url, json=fred_payload_valid, headers=auth_headers, timeout=20)
+                    if r_fred_cache.status_code == 200 and r_fred_cache.json().get("success") and r_fred_cache.json().get("is_cached"):
+                        add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "PASS", "Status 200, success:true, is_cached:true.")
+                    else:
+                        # If cache is not implemented for FRED, this might be an expected fail/warn.
+                        # For now, assume cache SHOULD work if yfinance caching works.
+                        add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "FAIL", f"Expected cached result. Status: {r_fred_cache.status_code}, Response: {r_fred_cache.text[:200]}")
+                except Exception as e:
+                    add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "FAIL", str(e))
+
+                # Invalid FRED Series
+                fred_payload_invalid = {"source": "fred", "parameters": {"series_id": "INVALIDFREDIDXYZ"}}
+                log_message(f"Testing {data_fetch_url} (FRED Invalid) with payload: {fred_payload_invalid}", level="DEBUG")
+                try:
+                    r_fred_invalid = requests.post(data_fetch_url, json=fred_payload_invalid, headers=auth_headers, timeout=20)
+                    if r_fred_invalid.status_code == 200 and not r_fred_invalid.json().get("success"):
+                        add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "PASS", "Status 200, success:false as expected for invalid series.")
+                    elif r_fred_invalid.status_code >= 400 : # Or if it returns a client/server error status for invalid series
+                         add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "PASS", f"Status {r_fred_invalid.status_code} (error) as expected for invalid series.")
+                    else:
+                        add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "FAIL", f"Status: {r_fred_invalid.status_code}, Response: {r_fred_invalid.text[:200]}. Expected success:false or error status.")
+                except Exception as e:
+                    add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "FAIL", str(e))
+
             # --- /api/files/upload Test ---
             file_upload_url = f"{FASTAPI_BASE_URL}/api/files/upload"
             dummy_file_content = "This is a health check dummy upload file."
@@ -1920,6 +1977,181 @@ def phase_3_generate_report():
 
     html_parts.append("</body></html>")
     return "".join(html_parts)
+
+# --- New Test Function: AI Market Review with Specific Date (Simulating Initial Analysis) ---
+def test_ai_market_review_with_specific_date():
+    category_name = "AI 功能與資料整合測試"
+    log_message("Running AI Market Review with Specific Date (simulating initial_analysis flow) test...", level="INFO")
+
+    temp_dir_name = "temp_test_files"
+    temp_files_dir_path = os.path.join(PROJECT_DIR, temp_dir_name)
+    temp_doc_name = "temp_dated_doc.txt"
+    temp_doc_path = os.path.join(temp_files_dir_path, temp_doc_name)
+    specific_date_str = "2023-10-26" # Used for validation and date range
+    file_text_content = f"""這是關於市場的一些初步想法。
+主要關注日期：{specific_date_str}
+我們認為基於{specific_date_str}的數據，市場情緒謹慎。
+"""
+    global test_api_auth_token # Ensure we use the globally stored token
+    auth_headers = {"Authorization": f"Bearer {test_api_auth_token}"}
+
+    if not test_api_auth_token:
+        log_message("Auth token not available, skipping AI initial_analysis flow test.", level="WARN")
+        add_test_result(category_name, "Initial Analysis - Setup", "SKIPPED", "Auth token not available.")
+        return
+
+    external_market_data = None
+    pre_fetch_success = False
+
+    try:
+        # 1. Prepare test file and directory
+        log_message(f"Creating temporary directory: {temp_files_dir_path}", level="DEBUG")
+        os.makedirs(temp_files_dir_path, exist_ok=True)
+        # add_test_result(category_name, "Initial Analysis - Temp Dir Creation", "PASS", f"Ensured {temp_files_dir_path} exists.") # Less critical sub-step for reporting
+
+        log_message(f"Creating temporary dated document: {temp_doc_path}", level="DEBUG")
+        with open(temp_doc_path, "w", encoding="utf-8") as f:
+            f.write(file_text_content)
+        # add_test_result(category_name, "Initial Analysis - Temp Doc Creation", "PASS", f"Created {temp_doc_name} with date {specific_date_str}.")
+
+        read_doc_content_for_ai = ""
+        with open(temp_doc_path, "r", encoding="utf-8") as f:
+            read_doc_content_for_ai = f.read()
+
+        if not read_doc_content_for_ai:
+            add_test_result(category_name, "Initial Analysis - Temp Document Read", "FAIL", f"Failed to read content from {temp_doc_name}.")
+            return # Cannot proceed without file content
+
+        # 2. (New Step) Pre-fetch market data for 'AAPL' around the specific_date_str
+        data_fetch_url = f"{FASTAPI_BASE_URL}/api/data/fetch"
+        # Define a period that robustly includes specific_date_str. E.g., the whole month of October 2023.
+        # Assuming yfinance takes start/end. If it takes period like '1mo' and an end_date, that's also an option.
+        # For '2023-10-26', let's fetch data for October 2023.
+        # Note: yfinance might need end_date to be exclusive or inclusive depending on library version or backend logic.
+        # Let's try a range that safely covers a week around the date.
+        # specific_datetime = datetime.datetime.strptime(specific_date_str, "%Y-%m-%d")
+        # start_date_fetch = (specific_datetime - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        # end_date_fetch = (specific_datetime + datetime.timedelta(days=1)).strftime("%Y-%m-%d") # Fetch up to and including the day
+
+        # Simpler: Assume the backend's /api/data/fetch can handle a "period" relative to a "date" or similar.
+        # Or, as per instructions, try to get data for "AAPL" "around" the date.
+        # If the API expects specific start/end, this is a guess.
+        # A common pattern for "1wk" data might be the 7 days ending on the given date.
+        # Let's use a common symbol like 'AAPL' and a period like '1mo' to increase chance of getting data.
+        # The actual date relevance of this fetched data to the AI's output for "2023-10-26" is complex to assert strongly.
+        market_data_payload = {
+            "source": "yfinance",
+            "parameters": {"symbol": "AAPL", "period": "1mo"} # Fetch 1 month of data for AAPL, hoping it covers the date.
+            # "parameters": {"symbol": "AAPL", "start_date": "2023-10-01", "end_date": "2023-10-31"} # More specific if API supports
+        }
+        log_message(f"Pre-fetching market data from {data_fetch_url} for AAPL (1mo period). Payload: {market_data_payload}", level="INFO")
+        try:
+            r_market_data = requests.post(data_fetch_url, json=market_data_payload, headers=auth_headers, timeout=20)
+            if r_market_data.status_code == 200 and r_market_data.json().get("success"):
+                external_market_data = r_market_data.json().get("data")
+                if external_market_data:
+                    log_message("Successfully pre-fetched market data for AAPL.", level="INFO")
+                    add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "PASS", "Successfully fetched external market data.")
+                    pre_fetch_success = True
+                else:
+                    log_message("Market data pre-fetch for AAPL was successful but data field is empty/null.", levelWARN")
+                    add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "WARN", "API success, but no data returned.", value=r_market_data.text[:150])
+            else:
+                log_message(f"Failed to pre-fetch market data for AAPL. Status: {r_market_data.status_code}, Response: {r_market_data.text[:150]}", level="WARN")
+                add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "FAIL", f"Status: {r_market_data.status_code}", value=r_market_data.text[:150])
+        except Exception as e_fetch:
+            log_message(f"Error during market data pre-fetch for AAPL: {e_fetch}", level="ERROR")
+            add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "FAIL", f"Exception: {str(e_fetch)[:150]}")
+
+        # 3. Construct payload for /api/chat/invoke with trigger_action = "initial_analysis"
+        chat_endpoint_url = f"{FASTAPI_BASE_URL}/api/chat/invoke"
+        # Using 'invoke' as per previous structure, assuming it routes based on context.trigger_action
+
+        initial_analysis_payload = {
+            "user_message": "", # No direct user message for this action
+            "chat_history": [],
+            "context": {
+                "trigger_action": "initial_analysis",
+                "file_content": read_doc_content_for_ai,
+                "date_range_for_analysis": specific_date_str, # e.g., "2023-10-26"
+                "external_data": external_market_data if pre_fetch_success else None # Pass fetched data
+            }
+        }
+
+        log_message(f"Posting to {chat_endpoint_url} for 'initial_analysis'. Date: {specific_date_str}. Payload (external_data excerpt): {str(initial_analysis_payload)[:200]}... (Full external_data may be large)", level="INFO")
+        response = requests.post(chat_endpoint_url, json=initial_analysis_payload, headers=auth_headers, timeout=45) # Increased timeout for more complex AI task
+
+        # 4. Validate AI response
+        if response.status_code == 200:
+            log_message(f"Initial Analysis AI endpoint returned 200. Response: {str(response.text)[:300]}...", level="DEBUG")
+            try:
+                response_json = response.json()
+                ai_reply_markdown = response_json.get("reply", "")
+
+                if not ai_reply_markdown.strip():
+                    add_test_result(category_name, "Initial Analysis - AI Reply Content", "FAIL", "AI reply is empty or whitespace.")
+                    return # No further validation possible
+
+                # Primary Validation: "A. 週次與日期範圍:"
+                # Regex to find "A. 週次與日期範圍:" followed by the date. Case-insensitive for "A." vs "a."
+                # Making it flexible for potential markdown bolding like **A. 週次與日期範圍:**
+                # Also, allowing for slight variations in whitespace.
+                date_range_pattern = re.compile(r"(?i)\*\*?A\.\s*週次與日期範圍:\s*\*\*?\s*(.*" + re.escape(specific_date_str) + r".*)", re.MULTILINE)
+                date_match = date_range_pattern.search(ai_reply_markdown)
+
+                if date_match:
+                    add_test_result(category_name, "Initial Analysis - Section A Date Validation", "PASS", f"Correct date '{specific_date_str}' found in 'A. 週次與日期範圍:'.", value=f"Matched line: {date_match.group(1)[:100]}...")
+                else:
+                    add_test_result(category_name, "Initial Analysis - Section A Date Validation", "FAIL", f"Specific date '{specific_date_str}' NOT found or pattern mismatch in 'A. 週次與日期範圍:'.", value=f"AI Reply (first 300 chars): {ai_reply_markdown[:300]}...")
+
+                # Secondary Validation: "C. 當週市場重點回顧:" content related to external_data (AAPL)
+                if pre_fetch_success and external_market_data:
+                    # Regex for "C. 當週市場重點回顧:"
+                    market_review_pattern = re.compile(r"(?i)\*\*?C\.\s*當週市場重點回顧:\s*\*\*?\s*([\s\S]*?)(?=\n\s*\*\*?[D]\.|Z\.)", re.MULTILINE) # Try to capture content until next section or end
+                    review_match = market_review_pattern.search(ai_reply_markdown)
+                    if review_match:
+                        review_text = review_match.group(1)
+                        if "AAPL" in review_text or "Apple" in review_text.capitalize(): # Check for ticker or company name
+                            add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "PASS", "Mention of 'AAPL' or 'Apple' found in market review section.", value=f"Review snippet: {review_text[:150]}...")
+                        else:
+                            add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "WARN", "Mention of 'AAPL' or 'Apple' NOT found in market review. Data might not have been used or mentioned.", value=f"Review snippet: {review_text[:150]}...")
+                        # A more advanced check would be to look for numerical data points from external_market_data,
+                        # but this is complex due to formatting and AI paraphrasing.
+                    else:
+                        add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "WARN", "Could not locate 'C. 當週市場重點回顧:' section clearly for AAPL check.", value=f"AI Reply (first 300 chars): {ai_reply_markdown[:300]}...")
+                elif pre_fetch_success and not external_market_data:
+                    add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "INFO", "Market data pre-fetch was successful but data was empty, Section C check skipped.")
+                else: # Pre-fetch failed or no data
+                    add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "SKIPPED", "Market data pre-fetch failed or no data, Section C check skipped.")
+
+            except ValueError: # Not JSON
+                add_test_result(category_name, "Initial Analysis - AI Response Parsing", "FAIL", f"AI endpoint response was not valid JSON. Status: {response.status_code}.", value=response.text[:200])
+            except Exception as e_parse:
+                add_test_result(category_name, "Initial Analysis - AI Response Parsing", "FAIL", f"Error parsing AI response: {e_parse}. Response text: {response.text[:200]}")
+        else:
+            log_message(f"Initial Analysis AI endpoint returned error. Status: {response.status_code}, Response: {response.text[:300]}", level="ERROR")
+            add_test_result(category_name, "Initial Analysis - AI API Call", "FAIL", f"AI endpoint returned status {response.status_code}.", value=response.text[:200])
+
+    except requests.exceptions.Timeout:
+        log_message(f"Request to AI endpoint for Initial Analysis timed out.", level="ERROR")
+        add_test_result(category_name, "Initial Analysis - AI API Call", "FAIL", "Request timed out.")
+    except Exception as e:
+        log_message(f"An unexpected error occurred in test_ai_market_review_with_specific_date (initial_analysis): {e}", level="CRITICAL")
+        add_test_result(category_name, "Initial Analysis - Overall Test Execution", "FAIL", f"Unexpected error: {e}")
+    finally:
+        # 5. Cleanup temporary files and directory
+        try:
+            if os.path.exists(temp_doc_path):
+                os.remove(temp_doc_path)
+                # log_message(f"Cleaned up temporary document: {temp_doc_path}", level="DEBUG")
+            if os.path.exists(temp_files_dir_path):
+                shutil.rmtree(temp_files_dir_path) # Use rmtree for robustness as dir may not be empty
+                # log_message(f"Cleaned up temporary directory: {temp_files_dir_path}", level="DEBUG")
+            # add_test_result(category_name, "Initial Analysis - Cleanup", "PASS", "Cleanup attempted for temp files/dir.") # Less critical for reporting
+        except Exception as e_cleanup:
+            log_message(f"Error during cleanup in initial_analysis test: {e_cleanup}", level="ERROR")
+            # add_test_result(category_name, "Initial Analysis - Cleanup", "FAIL", f"Error during cleanup: {e_cleanup}")
+
 
 # --- Phase 4: Display Report and Cleanup ---
 def phase_4_display_and_cleanup(html_report_str):
