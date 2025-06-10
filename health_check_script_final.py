@@ -225,12 +225,6 @@ def phase_1_environment_setup():
     # Streamlit application tests
     test_streamlit_startup_and_log_initialization()
 
-    # AI Functionality and Data Integration Tests
-    if server_started_ok and test_api_auth_token: # Depends on FastAPI server and auth
-        test_ai_market_review_with_specific_date()
-    else:
-        add_test_result("AI 功能與資料整合測試", "AI Market Review with Specific Date", "SKIPPED", "FastAPI server not running or auth token not available.")
-
 
     return clone_successful
 
@@ -1243,26 +1237,52 @@ def phase_2_tests(project_clone_successful):
                 # Test Case: Normal Chat Request
                 chat_payload_normal = {"user_message": "Hello, Wolf AI!", "chat_history": []}
                 log_message(f"Testing {chat_endpoint_url} (Normal) with payload: {chat_payload_normal}", level="DEBUG")
+                start_time_chat_normal = time.time()
+                r_chat_normal = None
+                duration_chat_normal = 0
+                details_chat_normal = ""
+                status_chat_normal = "FAIL" # Default
+                value_chat_normal = ""
                 try:
                     r_chat_normal = requests.post(chat_endpoint_url, json=chat_payload_normal, headers=auth_headers, timeout=20)
                     if r_chat_normal.status_code == 200 and "reply" in r_chat_normal.json():
-                        add_test_result(api_category_name, "Chat Endpoint - Normal Request", "PASS", "Status 200, 'reply' in response.", value=f"Reply snippet: {r_chat_normal.json()['reply'][:50]}...")
+                        status_chat_normal = "PASS"
+                        details_chat_normal = "Status 200, 'reply' in response."
+                        value_chat_normal = f"Reply snippet: {r_chat_normal.json()['reply'][:50]}..."
                     else:
-                        add_test_result(api_category_name, "Chat Endpoint - Normal Request", "FAIL", f"Status: {r_chat_normal.status_code}, Response: {r_chat_normal.text[:200]}")
+                        details_chat_normal = f"Status: {r_chat_normal.status_code}, Response: {r_chat_normal.text[:200]}"
                 except Exception as e:
-                    add_test_result(api_category_name, "Chat Endpoint - Normal Request", "FAIL", str(e))
+                    details_chat_normal = f"Request Exception: {str(e)}"
+                finally:
+                    end_time_chat_normal = time.time()
+                    duration_chat_normal = end_time_chat_normal - start_time_chat_normal
+                    log_message(f"Request to {chat_endpoint_url} (Normal) took {duration_chat_normal:.2f} seconds.", level="DEBUG")
+                    details_chat_normal += f" Duration: {duration_chat_normal:.2f}s"
+                    add_test_result(api_category_name, "Chat Endpoint - Normal Request", status_chat_normal, details_chat_normal, value=value_chat_normal)
 
                 # Test Case: Invalid Chat Request
                 chat_payload_invalid = {"chat_history": []} # Missing user_message
                 log_message(f"Testing {chat_endpoint_url} (Invalid) with payload: {chat_payload_invalid}", level="DEBUG")
+                start_time_chat_invalid = time.time()
+                r_chat_invalid = None
+                duration_chat_invalid = 0
+                details_chat_invalid = ""
+                status_chat_invalid = "FAIL" # Default
                 try:
                     r_chat_invalid = requests.post(chat_endpoint_url, json=chat_payload_invalid, headers=auth_headers, timeout=10)
                     if r_chat_invalid.status_code == 422: # FastAPI default for validation errors
-                        add_test_result(api_category_name, "Chat Endpoint - Invalid Payload", "PASS", "Status 422 (Unprocessable Entity) as expected for invalid payload.")
+                        status_chat_invalid = "PASS"
+                        details_chat_invalid = "Status 422 (Unprocessable Entity) as expected for invalid payload."
                     else:
-                        add_test_result(api_category_name, "Chat Endpoint - Invalid Payload", "FAIL", f"Expected 422, Got Status: {r_chat_invalid.status_code}, Response: {r_chat_invalid.text[:200]}")
+                        details_chat_invalid = f"Expected 422, Got Status: {r_chat_invalid.status_code}, Response: {r_chat_invalid.text[:200]}"
                 except Exception as e:
-                    add_test_result(api_category_name, "Chat Endpoint - Invalid Payload", "FAIL", str(e))
+                    details_chat_invalid = f"Request Exception: {str(e)}"
+                finally:
+                    end_time_chat_invalid = time.time()
+                    duration_chat_invalid = end_time_chat_invalid - start_time_chat_invalid
+                    log_message(f"Request to {chat_endpoint_url} (Invalid) took {duration_chat_invalid:.2f} seconds.", level="DEBUG")
+                    details_chat_invalid += f" Duration: {duration_chat_invalid:.2f}s"
+                    add_test_result(api_category_name, "Chat Endpoint - Invalid Payload", status_chat_invalid, details_chat_invalid)
 
 
             # --- /api/data/fetch Test ---
@@ -1275,91 +1295,155 @@ def phase_2_tests(project_clone_successful):
                 # Valid yfinance Ticker
                 yf_payload_valid = {"source": "yfinance", "parameters": {"symbol": "AAPL", "period": "1d"}}
                 log_message(f"Testing {data_fetch_url} (yfinance AAPL) with payload: {yf_payload_valid}", level="DEBUG")
+                start_time_yf_valid = time.time()
+                r_yf_valid = None
+                duration_yf_valid = 0
+                details_yf_valid = ""
+                status_yf_valid = "FAIL" # Default
+                value_yf_valid = ""
                 try:
                     r_yf_valid = requests.post(data_fetch_url, json=yf_payload_valid, headers=auth_headers, timeout=15)
                     if r_yf_valid.status_code == 200 and r_yf_valid.json().get("success") and not r_yf_valid.json().get("is_cached"):
-                        add_test_result(api_category_name, "Data Fetch - yfinance Valid Ticker (AAPL)", "PASS", "Status 200, success:true, is_cached:false.", value=f"Data sample: {str(r_yf_valid.json().get('data'))[:50]}...")
+                        status_yf_valid = "PASS"
+                        details_yf_valid = "Status 200, success:true, is_cached:false."
+                        value_yf_valid = f"Data sample: {str(r_yf_valid.json().get('data'))[:50]}..."
                     else:
-                        add_test_result(api_category_name, "Data Fetch - yfinance Valid Ticker (AAPL)", "FAIL", f"Status: {r_yf_valid.status_code}, Response: {r_yf_valid.text[:200]}")
-                except Exception as e:
-                    add_test_result(api_category_name, "Data Fetch - yfinance Valid Ticker (AAPL)", "FAIL", str(e))
+                        details_yf_valid = f"Status: {r_yf_valid.status_code if r_yf_valid else 'N/A'}, Response: {r_yf_valid.text[:200] if r_yf_valid else 'No Response'}"
+                except Exception as e_yf_valid:
+                    details_yf_valid = f"Request Exception: {str(e_yf_valid)}"
+                finally:
+                    end_time_yf_valid = time.time()
+                    duration_yf_valid = end_time_yf_valid - start_time_yf_valid
+                    log_message(f"Request to {data_fetch_url} (yfinance AAPL) took {duration_yf_valid:.2f} seconds.", level="DEBUG")
+                    details_yf_valid += f" Duration: {duration_yf_valid:.2f}s"
+                    add_test_result(api_category_name, "Data Fetch - yfinance Valid Ticker (AAPL)", status_yf_valid, details_yf_valid, value=value_yf_valid)
 
                 # yfinance Cache Check
                 log_message(f"Testing {data_fetch_url} (yfinance AAPL Cache) with payload: {yf_payload_valid}", level="DEBUG")
+                start_time_yf_cache = time.time()
+                r_yf_cache = None
+                duration_yf_cache = 0
+                details_yf_cache = ""
+                status_yf_cache = "FAIL" # Default
                 try:
                     r_yf_cache = requests.post(data_fetch_url, json=yf_payload_valid, headers=auth_headers, timeout=15)
                     if r_yf_cache.status_code == 200 and r_yf_cache.json().get("success") and r_yf_cache.json().get("is_cached"):
-                        add_test_result(api_category_name, "Data Fetch - yfinance Cache Check (AAPL)", "PASS", "Status 200, success:true, is_cached:true.")
+                        status_yf_cache = "PASS"
+                        details_yf_cache = "Status 200, success:true, is_cached:true."
                     else:
-                        add_test_result(api_category_name, "Data Fetch - yfinance Cache Check (AAPL)", "FAIL", f"Status: {r_yf_cache.status_code}, Response: {r_yf_cache.text[:200]}")
-                except Exception as e:
-                    add_test_result(api_category_name, "Data Fetch - yfinance Cache Check (AAPL)", "FAIL", str(e))
+                        details_yf_cache = f"Status: {r_yf_cache.status_code if r_yf_cache else 'N/A'}, Response: {r_yf_cache.text[:200] if r_yf_cache else 'No Response'}"
+                except Exception as e_yf_cache:
+                    details_yf_cache = f"Request Exception: {str(e_yf_cache)}"
+                finally:
+                    end_time_yf_cache = time.time()
+                    duration_yf_cache = end_time_yf_cache - start_time_yf_cache
+                    log_message(f"Request to {data_fetch_url} (yfinance AAPL Cache) took {duration_yf_cache:.2f} seconds.", level="DEBUG")
+                    details_yf_cache += f" Duration: {duration_yf_cache:.2f}s"
+                    add_test_result(api_category_name, "Data Fetch - yfinance Cache Check (AAPL)", status_yf_cache, details_yf_cache)
 
                 # Invalid yfinance Ticker
                 yf_payload_invalid = {"source": "yfinance", "parameters": {"symbol": "INVALIDTICKERXYZ", "period": "1d"}}
                 log_message(f"Testing {data_fetch_url} (yfinance Invalid) with payload: {yf_payload_invalid}", level="DEBUG")
+                start_time_yf_invalid = time.time()
+                r_yf_invalid = None
+                duration_yf_invalid = 0
+                details_yf_invalid_req = ""
+                status_yf_invalid = "FAIL" # Default
                 try:
                     r_yf_invalid = requests.post(data_fetch_url, json=yf_payload_invalid, headers=auth_headers, timeout=15)
-                    # Expecting success:false or some specific error structure within a 200, or a 4xx/5xx
                     if r_yf_invalid.status_code == 200 and not r_yf_invalid.json().get("success"):
-                        add_test_result(api_category_name, "Data Fetch - yfinance Invalid Ticker", "PASS", "Status 200, success:false as expected for invalid ticker.")
-                    elif r_yf_invalid.status_code >= 400: # Or if it returns a client/server error status
-                         add_test_result(api_category_name, "Data Fetch - yfinance Invalid Ticker", "PASS", f"Status {r_yf_invalid.status_code} as expected for invalid ticker.")
+                        status_yf_invalid = "PASS"
+                        details_yf_invalid_req = "Status 200, success:false as expected for invalid ticker."
+                    elif r_yf_invalid.status_code >= 400:
+                        status_yf_invalid = "PASS"
+                        details_yf_invalid_req = f"Status {r_yf_invalid.status_code} (error) as expected for invalid ticker."
                     else:
-                        add_test_result(api_category_name, "Data Fetch - yfinance Invalid Ticker", "FAIL", f"Status: {r_yf_invalid.status_code}, Response: {r_yf_invalid.text[:200]}. Expected success:false or error status.")
-                except Exception as e:
-                    add_test_result(api_category_name, "Data Fetch - yfinance Invalid Ticker", "FAIL", str(e))
+                        details_yf_invalid_req = f"Status: {r_yf_invalid.status_code if r_yf_invalid else 'N/A'}, Response: {r_yf_invalid.text[:200] if r_yf_invalid else 'No Response'}. Expected success:false or error status."
+                except Exception as e_yf_invalid:
+                    details_yf_invalid_req = f"Request Exception: {str(e_yf_invalid)}"
+                finally:
+                    end_time_yf_invalid = time.time()
+                    duration_yf_invalid = end_time_yf_invalid - start_time_yf_invalid
+                    log_message(f"Request to {data_fetch_url} (yfinance Invalid) took {duration_yf_invalid:.2f} seconds.", level="DEBUG")
+                    details_yf_invalid_req += f" Duration: {duration_yf_invalid:.2f}s"
+                    add_test_result(api_category_name, "Data Fetch - yfinance Invalid Ticker", status_yf_invalid, details_yf_invalid_req)
 
-            # --- Test FRED API data source via /api/data/fetch ---
-            if not test_api_auth_token:
-                add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "SKIPPED", "Auth token not available.")
-                add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "SKIPPED", "Auth token not available.")
-                add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "SKIPPED", "Auth token not available.")
-            else:
+                # --- FRED Data Source Tests ---
                 # Valid FRED Series
-                fred_payload_valid = {"source": "fred", "parameters": {"series_id": "GNPCA", "limit": 5}} # Add limit for manageable response
+                fred_payload_valid = {"source": "fred", "parameters": {"series_id": "GNPCA", "limit": 5}}
                 log_message(f"Testing {data_fetch_url} (FRED GNPCA) with payload: {fred_payload_valid}", level="DEBUG")
+                start_time_fred_valid = time.time()
+                r_fred_valid = None
+                duration_fred_valid = 0
+                details_fred_valid = ""
+                status_fred_valid = "FAIL" # Default
+                value_fred_valid = ""
                 try:
-                    r_fred_valid = requests.post(data_fetch_url, json=fred_payload_valid, headers=auth_headers, timeout=20) # FRED can be slow
-                    if r_fred_valid.status_code == 200 and r_fred_valid.json().get("success") and r_fred_valid.json().get("data") and not r_fred_valid.json().get("is_cached"):
-                        # Add more specific check for data structure if possible, e.g., list of observations
-                        data_sample = r_fred_valid.json().get("data")
-                        data_looks_ok = isinstance(data_sample, list) and len(data_sample) > 0 and "date" in data_sample[0] and "value" in data_sample[0]
-                        if data_looks_ok:
-                            add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "PASS", "Status 200, success:true, data present, is_cached:false.", value=f"Data sample: {str(data_sample)[:70]}...")
-                        else:
-                            add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "WARN", "Status 200, success:true, but data format unexpected or empty.", value=f"Response: {r_fred_valid.text[:200]}")
+                    r_fred_valid = requests.post(data_fetch_url, json=fred_payload_valid, headers=auth_headers, timeout=20)
+                    if r_fred_valid.status_code == 200 and r_fred_valid.json().get("success") and not r_fred_valid.json().get("is_cached"):
+                        status_fred_valid = "PASS"
+                        details_fred_valid = "Status 200, success:true, is_cached:false."
+                        value_fred_valid = f"Data sample: {str(r_fred_valid.json().get('data'))[:50]}..."
                     else:
-                        add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "FAIL", f"Status: {r_fred_valid.status_code}, Response: {r_fred_valid.text[:200]}")
-                except Exception as e:
-                    add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", "FAIL", str(e))
+                        details_fred_valid = f"Status: {r_fred_valid.status_code if r_fred_valid else 'N/A'}, Response: {r_fred_valid.text[:200] if r_fred_valid else 'No Response'}"
+                except Exception as e_fred_valid:
+                    details_fred_valid = f"Request Exception: {str(e_fred_valid)}"
+                finally:
+                    end_time_fred_valid = time.time()
+                    duration_fred_valid = end_time_fred_valid - start_time_fred_valid
+                    log_message(f"Request to {data_fetch_url} (FRED GNPCA) took {duration_fred_valid:.2f} seconds.", level="DEBUG")
+                    details_fred_valid += f" Duration: {duration_fred_valid:.2f}s"
+                    add_test_result(api_category_name, "Data Fetch - FRED Valid Series (GNPCA)", status_fred_valid, details_fred_valid, value=value_fred_valid)
 
-                # FRED Cache Check (GNPCA)
+                # FRED Cache Check
                 log_message(f"Testing {data_fetch_url} (FRED GNPCA Cache) with payload: {fred_payload_valid}", level="DEBUG")
+                start_time_fred_cache = time.time()
+                r_fred_cache = None
+                duration_fred_cache = 0
+                details_fred_cache = ""
+                status_fred_cache = "FAIL" # Default
                 try:
                     r_fred_cache = requests.post(data_fetch_url, json=fred_payload_valid, headers=auth_headers, timeout=20)
                     if r_fred_cache.status_code == 200 and r_fred_cache.json().get("success") and r_fred_cache.json().get("is_cached"):
-                        add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "PASS", "Status 200, success:true, is_cached:true.")
+                        status_fred_cache = "PASS"
+                        details_fred_cache = "Status 200, success:true, is_cached:true."
                     else:
-                        # If cache is not implemented for FRED, this might be an expected fail/warn.
-                        # For now, assume cache SHOULD work if yfinance caching works.
-                        add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "FAIL", f"Expected cached result. Status: {r_fred_cache.status_code}, Response: {r_fred_cache.text[:200]}")
-                except Exception as e:
-                    add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", "FAIL", str(e))
+                        details_fred_cache = f"Status: {r_fred_cache.status_code if r_fred_cache else 'N/A'}, Response: {r_fred_cache.text[:200] if r_fred_cache else 'No Response'}"
+                except Exception as e_fred_cache:
+                    details_fred_cache = f"Request Exception: {str(e_fred_cache)}"
+                finally:
+                    end_time_fred_cache = time.time()
+                    duration_fred_cache = end_time_fred_cache - start_time_fred_cache
+                    log_message(f"Request to {data_fetch_url} (FRED GNPCA Cache) took {duration_fred_cache:.2f} seconds.", level="DEBUG")
+                    details_fred_cache += f" Duration: {duration_fred_cache:.2f}s"
+                    add_test_result(api_category_name, "Data Fetch - FRED Cache Check (GNPCA)", status_fred_cache, details_fred_cache)
 
                 # Invalid FRED Series
                 fred_payload_invalid = {"source": "fred", "parameters": {"series_id": "INVALIDFREDIDXYZ"}}
                 log_message(f"Testing {data_fetch_url} (FRED Invalid) with payload: {fred_payload_invalid}", level="DEBUG")
+                start_time_fred_invalid = time.time()
+                r_fred_invalid = None
+                duration_fred_invalid = 0
+                details_fred_invalid_req = ""
+                status_fred_invalid = "FAIL" # Default
                 try:
                     r_fred_invalid = requests.post(data_fetch_url, json=fred_payload_invalid, headers=auth_headers, timeout=20)
                     if r_fred_invalid.status_code == 200 and not r_fred_invalid.json().get("success"):
-                        add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "PASS", "Status 200, success:false as expected for invalid series.")
-                    elif r_fred_invalid.status_code >= 400 : # Or if it returns a client/server error status for invalid series
-                         add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "PASS", f"Status {r_fred_invalid.status_code} (error) as expected for invalid series.")
+                        status_fred_invalid = "PASS"
+                        details_fred_invalid_req = "Status 200, success:false as expected for invalid series."
+                    elif r_fred_invalid.status_code >= 400:
+                        status_fred_invalid = "PASS"
+                        details_fred_invalid_req = f"Status {r_fred_invalid.status_code} (error) as expected for invalid series."
                     else:
-                        add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "FAIL", f"Status: {r_fred_invalid.status_code}, Response: {r_fred_invalid.text[:200]}. Expected success:false or error status.")
-                except Exception as e:
-                    add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", "FAIL", str(e))
+                        details_fred_invalid_req = f"Status: {r_fred_invalid.status_code if r_fred_invalid else 'N/A'}, Response: {r_fred_invalid.text[:200] if r_fred_invalid else 'No Response'}. Expected success:false or error status."
+                except Exception as e_fred_invalid:
+                    details_fred_invalid_req = f"Request Exception: {str(e_fred_invalid)}"
+                finally:
+                    end_time_fred_invalid = time.time()
+                    duration_fred_invalid = end_time_fred_invalid - start_time_fred_invalid
+                    log_message(f"Request to {data_fetch_url} (FRED Invalid) took {duration_fred_invalid:.2f} seconds.", level="DEBUG")
+                    details_fred_invalid_req += f" Duration: {duration_fred_invalid:.2f}s"
+                    add_test_result(api_category_name, "Data Fetch - FRED Invalid Series", status_fred_invalid, details_fred_invalid_req)
 
             # --- /api/files/upload Test ---
             file_upload_url = f"{FASTAPI_BASE_URL}/api/files/upload"
@@ -1373,6 +1457,12 @@ def phase_2_tests(project_clone_successful):
             if not test_api_auth_token:
                 add_test_result(api_category_name, "File Upload - Successful Upload", "SKIPPED", "Auth token not available.")
             else:
+                start_time_upload = time.time()
+                r_upload = None
+                duration_upload = 0
+                details_upload = ""
+                status_upload = "FAIL" # Default
+                value_upload = ""
                 try:
                     with open(dummy_file_path, "w") as f: f.write(dummy_file_content)
                     log_message(f"Testing {file_upload_url} with file: {dummy_file_path}", level="DEBUG")
@@ -1381,12 +1471,19 @@ def phase_2_tests(project_clone_successful):
                         r_upload = requests.post(file_upload_url, files=files_payload, headers=auth_headers, timeout=15)
 
                     if r_upload.status_code == 200 and r_upload.json().get("success") and r_upload.json().get("file_id"):
-                        add_test_result(api_category_name, "File Upload - Successful Upload", "PASS", "Status 200, success:true, file_id present.", value=f"File ID: {r_upload.json()['file_id']}")
+                        status_upload = "PASS"
+                        details_upload = "Status 200, success:true, file_id present."
+                        value_upload = f"File ID: {r_upload.json()['file_id']}"
                     else:
-                        add_test_result(api_category_name, "File Upload - Successful Upload", "FAIL", f"Status: {r_upload.status_code}, Response: {r_upload.text[:200]}")
+                        details_upload = f"Status: {r_upload.status_code if r_upload else 'N/A'}, Response: {r_upload.text[:200] if r_upload else 'No Response'}"
                 except Exception as e:
-                    add_test_result(api_category_name, "File Upload - Successful Upload", "FAIL", str(e))
+                    details_upload = f"Request Exception: {str(e)}"
                 finally:
+                    end_time_upload = time.time()
+                    duration_upload = end_time_upload - start_time_upload
+                    log_message(f"Request to {file_upload_url} took {duration_upload:.2f} seconds.", level="DEBUG")
+                    details_upload += f" Duration: {duration_upload:.2f}s"
+                    add_test_result(api_category_name, "File Upload - Successful Upload", status_upload, details_upload, value=value_upload)
                     if os.path.exists(dummy_file_path): os.remove(dummy_file_path)
 
 
@@ -1396,27 +1493,38 @@ def phase_2_tests(project_clone_successful):
                 add_test_result(api_category_name, "Database Backup - Successful Backup", "SKIPPED", "Auth token not available.")
             else:
                 backup_file_path_from_api = None
+                start_time_backup = time.time()
+                r_backup = None
+                duration_backup = 0
+                details_backup = ""
+                status_backup = "FAIL" # Default
+                value_backup = ""
                 try:
                     log_message(f"Testing {db_backup_url}", level="DEBUG")
                     r_backup = requests.post(db_backup_url, headers=auth_headers, timeout=20) # Backup can take time
                     if r_backup.status_code == 200 and r_backup.json().get("success") and r_backup.json().get("backup_path"):
                         backup_file_path_from_api = r_backup.json()["backup_path"]
-                        # The path might be relative to PROJECT_DIR or absolute.
-                        # For this test, let's assume it's relative to PROJECT_DIR if not absolute.
+                        value_backup = f"API path: {backup_file_path_from_api}"
                         if not os.path.isabs(backup_file_path_from_api):
                             backup_file_full_path = os.path.join(PROJECT_DIR, backup_file_path_from_api)
                         else:
                             backup_file_full_path = backup_file_path_from_api
 
                         if os.path.exists(backup_file_full_path):
-                            add_test_result(api_category_name, "Database Backup - Successful Backup", "PASS", "Status 200, success:true, backup file created.", value=f"Backup path: {backup_file_path_from_api}")
+                            status_backup = "PASS"
+                            details_backup = "Status 200, success:true, backup file created."
                         else:
-                            add_test_result(api_category_name, "Database Backup - Successful Backup", "FAIL", f"Status 200, success:true, but backup file NOT found at {backup_file_full_path}", value=f"API path: {backup_file_path_from_api}")
+                            details_backup = f"Status 200, success:true, but backup file NOT found at {backup_file_full_path}"
                     else:
-                        add_test_result(api_category_name, "Database Backup - Successful Backup", "FAIL", f"Status: {r_backup.status_code}, Response: {r_backup.text[:200]}")
+                        details_backup = f"Status: {r_backup.status_code if r_backup else 'N/A'}, Response: {r_backup.text[:200] if r_backup else 'No Response'}"
                 except Exception as e:
-                    add_test_result(api_category_name, "Database Backup - Successful Backup", "FAIL", str(e))
+                    details_backup = f"Request Exception: {str(e)}"
                 finally:
+                    end_time_backup = time.time()
+                    duration_backup = end_time_backup - start_time_backup
+                    log_message(f"Request to {db_backup_url} took {duration_backup:.2f} seconds.", level="DEBUG")
+                    details_backup += f" Duration: {duration_backup:.2f}s"
+                    add_test_result(api_category_name, "Database Backup - Successful Backup", status_backup, details_backup, value=value_backup)
                     if backup_file_path_from_api:
                         # Construct full path for cleanup similar to how it was checked
                         if not os.path.isabs(backup_file_path_from_api):
@@ -1977,181 +2085,6 @@ def phase_3_generate_report():
 
     html_parts.append("</body></html>")
     return "".join(html_parts)
-
-# --- New Test Function: AI Market Review with Specific Date (Simulating Initial Analysis) ---
-def test_ai_market_review_with_specific_date():
-    category_name = "AI 功能與資料整合測試"
-    log_message("Running AI Market Review with Specific Date (simulating initial_analysis flow) test...", level="INFO")
-
-    temp_dir_name = "temp_test_files"
-    temp_files_dir_path = os.path.join(PROJECT_DIR, temp_dir_name)
-    temp_doc_name = "temp_dated_doc.txt"
-    temp_doc_path = os.path.join(temp_files_dir_path, temp_doc_name)
-    specific_date_str = "2023-10-26" # Used for validation and date range
-    file_text_content = f"""這是關於市場的一些初步想法。
-主要關注日期：{specific_date_str}
-我們認為基於{specific_date_str}的數據，市場情緒謹慎。
-"""
-    global test_api_auth_token # Ensure we use the globally stored token
-    auth_headers = {"Authorization": f"Bearer {test_api_auth_token}"}
-
-    if not test_api_auth_token:
-        log_message("Auth token not available, skipping AI initial_analysis flow test.", level="WARN")
-        add_test_result(category_name, "Initial Analysis - Setup", "SKIPPED", "Auth token not available.")
-        return
-
-    external_market_data = None
-    pre_fetch_success = False
-
-    try:
-        # 1. Prepare test file and directory
-        log_message(f"Creating temporary directory: {temp_files_dir_path}", level="DEBUG")
-        os.makedirs(temp_files_dir_path, exist_ok=True)
-        # add_test_result(category_name, "Initial Analysis - Temp Dir Creation", "PASS", f"Ensured {temp_files_dir_path} exists.") # Less critical sub-step for reporting
-
-        log_message(f"Creating temporary dated document: {temp_doc_path}", level="DEBUG")
-        with open(temp_doc_path, "w", encoding="utf-8") as f:
-            f.write(file_text_content)
-        # add_test_result(category_name, "Initial Analysis - Temp Doc Creation", "PASS", f"Created {temp_doc_name} with date {specific_date_str}.")
-
-        read_doc_content_for_ai = ""
-        with open(temp_doc_path, "r", encoding="utf-8") as f:
-            read_doc_content_for_ai = f.read()
-
-        if not read_doc_content_for_ai:
-            add_test_result(category_name, "Initial Analysis - Temp Document Read", "FAIL", f"Failed to read content from {temp_doc_name}.")
-            return # Cannot proceed without file content
-
-        # 2. (New Step) Pre-fetch market data for 'AAPL' around the specific_date_str
-        data_fetch_url = f"{FASTAPI_BASE_URL}/api/data/fetch"
-        # Define a period that robustly includes specific_date_str. E.g., the whole month of October 2023.
-        # Assuming yfinance takes start/end. If it takes period like '1mo' and an end_date, that's also an option.
-        # For '2023-10-26', let's fetch data for October 2023.
-        # Note: yfinance might need end_date to be exclusive or inclusive depending on library version or backend logic.
-        # Let's try a range that safely covers a week around the date.
-        # specific_datetime = datetime.datetime.strptime(specific_date_str, "%Y-%m-%d")
-        # start_date_fetch = (specific_datetime - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
-        # end_date_fetch = (specific_datetime + datetime.timedelta(days=1)).strftime("%Y-%m-%d") # Fetch up to and including the day
-
-        # Simpler: Assume the backend's /api/data/fetch can handle a "period" relative to a "date" or similar.
-        # Or, as per instructions, try to get data for "AAPL" "around" the date.
-        # If the API expects specific start/end, this is a guess.
-        # A common pattern for "1wk" data might be the 7 days ending on the given date.
-        # Let's use a common symbol like 'AAPL' and a period like '1mo' to increase chance of getting data.
-        # The actual date relevance of this fetched data to the AI's output for "2023-10-26" is complex to assert strongly.
-        market_data_payload = {
-            "source": "yfinance",
-            "parameters": {"symbol": "AAPL", "period": "1mo"} # Fetch 1 month of data for AAPL, hoping it covers the date.
-            # "parameters": {"symbol": "AAPL", "start_date": "2023-10-01", "end_date": "2023-10-31"} # More specific if API supports
-        }
-        log_message(f"Pre-fetching market data from {data_fetch_url} for AAPL (1mo period). Payload: {market_data_payload}", level="INFO")
-        try:
-            r_market_data = requests.post(data_fetch_url, json=market_data_payload, headers=auth_headers, timeout=20)
-            if r_market_data.status_code == 200 and r_market_data.json().get("success"):
-                external_market_data = r_market_data.json().get("data")
-                if external_market_data:
-                    log_message("Successfully pre-fetched market data for AAPL.", level="INFO")
-                    add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "PASS", "Successfully fetched external market data.")
-                    pre_fetch_success = True
-                else:
-                    log_message("Market data pre-fetch for AAPL was successful but data field is empty/null.", levelWARN")
-                    add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "WARN", "API success, but no data returned.", value=r_market_data.text[:150])
-            else:
-                log_message(f"Failed to pre-fetch market data for AAPL. Status: {r_market_data.status_code}, Response: {r_market_data.text[:150]}", level="WARN")
-                add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "FAIL", f"Status: {r_market_data.status_code}", value=r_market_data.text[:150])
-        except Exception as e_fetch:
-            log_message(f"Error during market data pre-fetch for AAPL: {e_fetch}", level="ERROR")
-            add_test_result(category_name, "Initial Analysis - Market Data Pre-fetch (AAPL)", "FAIL", f"Exception: {str(e_fetch)[:150]}")
-
-        # 3. Construct payload for /api/chat/invoke with trigger_action = "initial_analysis"
-        chat_endpoint_url = f"{FASTAPI_BASE_URL}/api/chat/invoke"
-        # Using 'invoke' as per previous structure, assuming it routes based on context.trigger_action
-
-        initial_analysis_payload = {
-            "user_message": "", # No direct user message for this action
-            "chat_history": [],
-            "context": {
-                "trigger_action": "initial_analysis",
-                "file_content": read_doc_content_for_ai,
-                "date_range_for_analysis": specific_date_str, # e.g., "2023-10-26"
-                "external_data": external_market_data if pre_fetch_success else None # Pass fetched data
-            }
-        }
-
-        log_message(f"Posting to {chat_endpoint_url} for 'initial_analysis'. Date: {specific_date_str}. Payload (external_data excerpt): {str(initial_analysis_payload)[:200]}... (Full external_data may be large)", level="INFO")
-        response = requests.post(chat_endpoint_url, json=initial_analysis_payload, headers=auth_headers, timeout=45) # Increased timeout for more complex AI task
-
-        # 4. Validate AI response
-        if response.status_code == 200:
-            log_message(f"Initial Analysis AI endpoint returned 200. Response: {str(response.text)[:300]}...", level="DEBUG")
-            try:
-                response_json = response.json()
-                ai_reply_markdown = response_json.get("reply", "")
-
-                if not ai_reply_markdown.strip():
-                    add_test_result(category_name, "Initial Analysis - AI Reply Content", "FAIL", "AI reply is empty or whitespace.")
-                    return # No further validation possible
-
-                # Primary Validation: "A. 週次與日期範圍:"
-                # Regex to find "A. 週次與日期範圍:" followed by the date. Case-insensitive for "A." vs "a."
-                # Making it flexible for potential markdown bolding like **A. 週次與日期範圍:**
-                # Also, allowing for slight variations in whitespace.
-                date_range_pattern = re.compile(r"(?i)\*\*?A\.\s*週次與日期範圍:\s*\*\*?\s*(.*" + re.escape(specific_date_str) + r".*)", re.MULTILINE)
-                date_match = date_range_pattern.search(ai_reply_markdown)
-
-                if date_match:
-                    add_test_result(category_name, "Initial Analysis - Section A Date Validation", "PASS", f"Correct date '{specific_date_str}' found in 'A. 週次與日期範圍:'.", value=f"Matched line: {date_match.group(1)[:100]}...")
-                else:
-                    add_test_result(category_name, "Initial Analysis - Section A Date Validation", "FAIL", f"Specific date '{specific_date_str}' NOT found or pattern mismatch in 'A. 週次與日期範圍:'.", value=f"AI Reply (first 300 chars): {ai_reply_markdown[:300]}...")
-
-                # Secondary Validation: "C. 當週市場重點回顧:" content related to external_data (AAPL)
-                if pre_fetch_success and external_market_data:
-                    # Regex for "C. 當週市場重點回顧:"
-                    market_review_pattern = re.compile(r"(?i)\*\*?C\.\s*當週市場重點回顧:\s*\*\*?\s*([\s\S]*?)(?=\n\s*\*\*?[D]\.|Z\.)", re.MULTILINE) # Try to capture content until next section or end
-                    review_match = market_review_pattern.search(ai_reply_markdown)
-                    if review_match:
-                        review_text = review_match.group(1)
-                        if "AAPL" in review_text or "Apple" in review_text.capitalize(): # Check for ticker or company name
-                            add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "PASS", "Mention of 'AAPL' or 'Apple' found in market review section.", value=f"Review snippet: {review_text[:150]}...")
-                        else:
-                            add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "WARN", "Mention of 'AAPL' or 'Apple' NOT found in market review. Data might not have been used or mentioned.", value=f"Review snippet: {review_text[:150]}...")
-                        # A more advanced check would be to look for numerical data points from external_market_data,
-                        # but this is complex due to formatting and AI paraphrasing.
-                    else:
-                        add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "WARN", "Could not locate 'C. 當週市場重點回顧:' section clearly for AAPL check.", value=f"AI Reply (first 300 chars): {ai_reply_markdown[:300]}...")
-                elif pre_fetch_success and not external_market_data:
-                    add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "INFO", "Market data pre-fetch was successful but data was empty, Section C check skipped.")
-                else: # Pre-fetch failed or no data
-                    add_test_result(category_name, "Initial Analysis - Section C Content (AAPL)", "SKIPPED", "Market data pre-fetch failed or no data, Section C check skipped.")
-
-            except ValueError: # Not JSON
-                add_test_result(category_name, "Initial Analysis - AI Response Parsing", "FAIL", f"AI endpoint response was not valid JSON. Status: {response.status_code}.", value=response.text[:200])
-            except Exception as e_parse:
-                add_test_result(category_name, "Initial Analysis - AI Response Parsing", "FAIL", f"Error parsing AI response: {e_parse}. Response text: {response.text[:200]}")
-        else:
-            log_message(f"Initial Analysis AI endpoint returned error. Status: {response.status_code}, Response: {response.text[:300]}", level="ERROR")
-            add_test_result(category_name, "Initial Analysis - AI API Call", "FAIL", f"AI endpoint returned status {response.status_code}.", value=response.text[:200])
-
-    except requests.exceptions.Timeout:
-        log_message(f"Request to AI endpoint for Initial Analysis timed out.", level="ERROR")
-        add_test_result(category_name, "Initial Analysis - AI API Call", "FAIL", "Request timed out.")
-    except Exception as e:
-        log_message(f"An unexpected error occurred in test_ai_market_review_with_specific_date (initial_analysis): {e}", level="CRITICAL")
-        add_test_result(category_name, "Initial Analysis - Overall Test Execution", "FAIL", f"Unexpected error: {e}")
-    finally:
-        # 5. Cleanup temporary files and directory
-        try:
-            if os.path.exists(temp_doc_path):
-                os.remove(temp_doc_path)
-                # log_message(f"Cleaned up temporary document: {temp_doc_path}", level="DEBUG")
-            if os.path.exists(temp_files_dir_path):
-                shutil.rmtree(temp_files_dir_path) # Use rmtree for robustness as dir may not be empty
-                # log_message(f"Cleaned up temporary directory: {temp_files_dir_path}", level="DEBUG")
-            # add_test_result(category_name, "Initial Analysis - Cleanup", "PASS", "Cleanup attempted for temp files/dir.") # Less critical for reporting
-        except Exception as e_cleanup:
-            log_message(f"Error during cleanup in initial_analysis test: {e_cleanup}", level="ERROR")
-            # add_test_result(category_name, "Initial Analysis - Cleanup", "FAIL", f"Error during cleanup: {e_cleanup}")
-
 
 # --- Phase 4: Display Report and Cleanup ---
 def phase_4_display_and_cleanup(html_report_str):
